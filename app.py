@@ -7,6 +7,8 @@ import pandas as pd
 from pathlib import Path
 from config import Config
 from components.ai_panel import display_ai_copilot
+import requests
+import time
 
 
 # Page configuration
@@ -82,6 +84,93 @@ def load_dataset_file(file_path: str):
     except Exception as e:
         raise Exception(f"Error loading dataset: {str(e)}")
 
+def download_from_google_drive(file_id: str, filename: str, description: str = "dataset") -> Path:
+    """
+    Download large dataset from Google Drive with progress tracking.
+    """
+    data_dir = Path("data")
+    data_dir.mkdir(exist_ok=True)
+    file_path = data_dir / filename
+    
+    # Check if file already exists
+    if file_path.exists():
+        file_size_mb = file_path.stat().st_size / (1024 * 1024)
+        st.success(f"✅ {description} already available ({file_size_mb:.1f}MB)")
+        return file_path
+    
+    # Google Drive direct download URL
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    
+    try:
+        st.info(f"📥 Downloading {description} from Google Drive... This may take several minutes.")
+        
+        session = requests.Session()
+        response = session.get(url, stream=True)
+        
+        # Handle large file confirmation
+        if 'download_warning' in response.text:
+            for line in response.text.splitlines():
+                if 'confirm=' in line:
+                    token = line.split('confirm=')[1].split('&')[0]
+                    url = f"https://drive.google.com/uc?export=download&confirm={token}&id={file_id}"
+                    break
+            response = session.get(url, stream=True)
+        
+        response.raise_for_status()
+        total_size = int(response.headers.get('content-length', 0))
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        downloaded = 0
+        chunk_size = 32768
+        start_time = time.time()
+        
+        with open(file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    
+                    if total_size > 0:
+                        progress = downloaded / total_size
+                        progress_bar.progress(min(progress, 1.0))
+                    
+                    elapsed = time.time() - start_time
+                    if elapsed > 1:
+                        speed_mbps = (downloaded / (1024 * 1024)) / elapsed
+                        downloaded_mb = downloaded / (1024 * 1024)
+                        
+                        if total_size > 0:
+                            total_mb = total_size / (1024 * 1024)
+                            eta_seconds = (total_size - downloaded) / (downloaded / elapsed)
+                            eta_minutes = eta_seconds / 60
+                            status_text.text(f"Downloaded: {downloaded_mb:.1f}MB / {total_mb:.1f}MB | Speed: {speed_mbps:.1f}MB/s | ETA: {eta_minutes:.1f}min")
+                        else:
+                            status_text.text(f"Downloaded: {downloaded_mb:.1f}MB | Speed: {speed_mbps:.1f}MB/s")
+        
+        progress_bar.progress(1.0)
+        final_size_mb = downloaded / (1024 * 1024)
+        status_text.text(f"✅ Download complete: {final_size_mb:.1f}MB")
+        return file_path
+        
+    except Exception as e:
+        st.error(f"❌ Download failed: {str(e)}")
+        if file_path.exists():
+            file_path.unlink()
+        raise
+
+def get_google_drive_datasets():
+    """
+    Define Google Drive file IDs for datasets.
+    """
+    return {
+        "complete_user_transactions.csv": {
+            "file_id": "1zXgjJ_2CExdwBXINv3riqYSSAh_hl88z",  # Your actual Google Drive file ID
+            "description": "Complete User Transactions (2.3GB)",
+            "size_mb": 2300
+        }
+    }
+
 def load_full_dataset():
     """Load complete user dataset with smart performance handling."""
     st.sidebar.header("📁 Data Source")
@@ -95,6 +184,23 @@ def load_full_dataset():
     
     # Get available datasets
     available_files, data_dir = get_available_datasets()
+    
+    # Add Google Drive download option
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📁 Google Drive Datasets")
+    
+    google_datasets = get_google_drive_datasets()
+    for filename, info in google_datasets.items():
+        file_path = data_dir / filename
+        if file_path.exists():
+            size_mb = file_path.stat().st_size / (1024 * 1024)
+            st.sidebar.success(f"✅ {filename} ({size_mb:.1f}MB)")
+        else:
+            if st.sidebar.button(f"📥 Download {info['description']}", key=f"gd_{filename}"):
+                download_from_google_drive(info["file_id"], filename, info["description"])
+                st.rerun()
+    
+    st.sidebar.markdown("---")
     
     if available_files:
         # Default to largest dataset (complete dataset) for local use
