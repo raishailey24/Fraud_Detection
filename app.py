@@ -154,14 +154,13 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
         
         total_size = int(response.headers.get('content-length', 0))
         
-        # Create persistent progress display
-        progress_container = st.container()
-        with progress_container:
-            st.markdown("### 📥 Download Progress")
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            speed_text = st.empty()
-            eta_text = st.empty()
+        # Create persistent progress display in main area
+        st.markdown("### 📥 Download Progress")
+        st.write(f"Downloading: **{description}**")
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        speed_text = st.empty()
+        eta_text = st.empty()
         
         downloaded = 0
         chunk_size = 8192  # Smaller chunks for better progress tracking
@@ -290,12 +289,22 @@ def load_full_dataset():
                 if st.sidebar.button(f"🔄 Re-download {info['description']}", key=f"retry_{filename}"):
                     # Delete empty file and retry
                     file_path.unlink()
-                    download_from_google_drive(info["file_id"], filename, info["description"])
-                    st.rerun()
+                    st.info("🔄 Retrying download... Please wait for progress display")
+                    result = download_from_google_drive(info["file_id"], filename, info["description"])
+                    if result:
+                        st.success("✅ Download completed! Refreshing page...")
+                        st.rerun()
+                    else:
+                        st.error("❌ Download failed. Please try again.")
         else:
             if st.sidebar.button(f"📥 Download {info['description']}", key=f"gd_{filename}"):
-                download_from_google_drive(info["file_id"], filename, info["description"])
-                st.rerun()
+                st.info("🚀 Starting download... Please wait for progress display")
+                result = download_from_google_drive(info["file_id"], filename, info["description"])
+                if result:
+                    st.success("✅ Download completed! Refreshing page...")
+                    st.rerun()
+                else:
+                    st.error("❌ Download failed. Please try again.")
     
     st.sidebar.markdown("---")
     
