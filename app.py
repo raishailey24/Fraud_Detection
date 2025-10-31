@@ -86,43 +86,73 @@ def load_dataset_file(file_path: str):
 
 def download_from_google_drive(file_id: str, filename: str, description: str = "dataset") -> Path:
     """
-    Download large dataset from Google Drive with progress tracking.
+    Download large dataset from Google Drive with proper large file handling.
     """
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
     file_path = data_dir / filename
     
-    # Check if file already exists
-    if file_path.exists():
+    # Check if file already exists and is not empty
+    if file_path.exists() and file_path.stat().st_size > 1024:  # At least 1KB
         file_size_mb = file_path.stat().st_size / (1024 * 1024)
         st.success(f"✅ {description} already available ({file_size_mb:.1f}MB)")
         return file_path
-    
-    # Google Drive direct download URL
-    url = f"https://drive.google.com/uc?export=download&id={file_id}"
     
     try:
         st.info(f"📥 Downloading {description} from Google Drive... This may take several minutes.")
         
         session = requests.Session()
+        
+        # First, try to get the file info
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
         response = session.get(url, stream=True)
         
-        # Handle large file confirmation
-        if 'download_warning' in response.text:
+        # For large files, Google Drive shows a warning page with a confirmation token
+        if 'virus scan warning' in response.text.lower() or 'download_warning' in response.text:
+            st.info("🔄 Large file detected, getting download confirmation...")
+            
+            # Extract the confirmation token
+            confirm_token = None
             for line in response.text.splitlines():
-                if 'confirm=' in line:
-                    token = line.split('confirm=')[1].split('&')[0]
-                    url = f"https://drive.google.com/uc?export=download&confirm={token}&id={file_id}"
-                    break
-            response = session.get(url, stream=True)
+                if 'confirm=' in line and 'download' in line:
+                    # Extract token from the form or link
+                    import re
+                    token_match = re.search(r'confirm=([a-zA-Z0-9_-]+)', line)
+                    if token_match:
+                        confirm_token = token_match.group(1)
+                        break
+            
+            if not confirm_token:
+                # Try alternative extraction method
+                import re
+                token_matches = re.findall(r'name="confirm" value="([^"]+)"', response.text)
+                if token_matches:
+                    confirm_token = token_matches[0]
+            
+            if confirm_token:
+                # Use the confirmation token to download
+                url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={file_id}"
+                st.info(f"🔑 Using confirmation token: {confirm_token[:10]}...")
+            else:
+                st.warning("⚠️ Could not extract confirmation token, trying direct download...")
         
+        # Make the actual download request
+        response = session.get(url, stream=True, timeout=30)
         response.raise_for_status()
+        
+        # Check if we got an HTML page instead of the file
+        content_type = response.headers.get('content-type', '')
+        if 'text/html' in content_type:
+            st.error("❌ Received HTML instead of file. The file might be too large or require different permissions.")
+            st.info("💡 Try making the Google Drive file 'Public' with 'Anyone with the link can view'")
+            return None
+        
         total_size = int(response.headers.get('content-length', 0))
         
         progress_bar = st.progress(0)
         status_text = st.empty()
         downloaded = 0
-        chunk_size = 32768
+        chunk_size = 8192  # Smaller chunks for better progress tracking
         start_time = time.time()
         
         with open(file_path, 'wb') as f:
@@ -136,7 +166,7 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
                         progress_bar.progress(min(progress, 1.0))
                     
                     elapsed = time.time() - start_time
-                    if elapsed > 1:
+                    if elapsed > 2:  # Update every 2 seconds
                         speed_mbps = (downloaded / (1024 * 1024)) / elapsed
                         downloaded_mb = downloaded / (1024 * 1024)
                         
@@ -148,16 +178,24 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
                         else:
                             status_text.text(f"Downloaded: {downloaded_mb:.1f}MB | Speed: {speed_mbps:.1f}MB/s")
         
-        progress_bar.progress(1.0)
+        # Verify the download
         final_size_mb = downloaded / (1024 * 1024)
+        if downloaded < 1024:  # Less than 1KB suggests failed download
+            st.error(f"❌ Download failed: File too small ({downloaded} bytes)")
+            if file_path.exists():
+                file_path.unlink()
+            return None
+        
+        progress_bar.progress(1.0)
         status_text.text(f"✅ Download complete: {final_size_mb:.1f}MB")
         return file_path
         
     except Exception as e:
         st.error(f"❌ Download failed: {str(e)}")
+        st.info("💡 Please ensure the Google Drive file is shared as 'Anyone with the link can view'")
         if file_path.exists():
             file_path.unlink()
-        raise
+        return None
 
 def get_google_drive_datasets():
     """
@@ -189,12 +227,34 @@ def load_full_dataset():
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📁 Google Drive Datasets")
     
+    # Show sharing instructions
+    with st.sidebar.expander("📋 Google Drive Setup"):
+        st.markdown("""
+        **If download fails:**
+        1. Go to your Google Drive file
+        2. Right-click → Share
+        3. Change to "Anyone with the link"
+        4. Set permission to "Viewer"
+        5. Try download again
+        
+        **Alternative:** Download manually and place in `/data/` folder
+        """)
+    
+    
     google_datasets = get_google_drive_datasets()
     for filename, info in google_datasets.items():
         file_path = data_dir / filename
         if file_path.exists():
             size_mb = file_path.stat().st_size / (1024 * 1024)
-            st.sidebar.success(f"✅ {filename} ({size_mb:.1f}MB)")
+            if size_mb > 1:  # File has actual content
+                st.sidebar.success(f"✅ {filename} ({size_mb:.1f}MB)")
+            else:
+                st.sidebar.warning(f"⚠️ {filename} (Empty - {size_mb:.1f}MB)")
+                if st.sidebar.button(f"🔄 Re-download {info['description']}", key=f"retry_{filename}"):
+                    # Delete empty file and retry
+                    file_path.unlink()
+                    download_from_google_drive(info["file_id"], filename, info["description"])
+                    st.rerun()
         else:
             if st.sidebar.button(f"📥 Download {info['description']}", key=f"gd_{filename}"):
                 download_from_google_drive(info["file_id"], filename, info["description"])
