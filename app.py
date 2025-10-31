@@ -86,6 +86,13 @@ def load_full_dataset():
     """Load complete user dataset with smart performance handling."""
     st.sidebar.header("📁 Data Source")
     
+    # For Streamlit Cloud deployment, ensure sample data exists
+    try:
+        from streamlit_cloud_setup import ensure_sample_data
+        ensure_sample_data()
+    except ImportError:
+        pass  # Skip if not in cloud environment
+    
     # Get available datasets
     available_files, data_dir = get_available_datasets()
     
