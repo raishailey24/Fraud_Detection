@@ -112,49 +112,97 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
         
         session = requests.Session()
         
-        # First, try to get the file info
-        url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        response = session.get(url, stream=True)
+        # Try multiple Google Drive download methods
+        download_urls = [
+            f"https://drive.google.com/uc?export=download&id={file_id}",
+            f"https://docs.google.com/uc?export=download&id={file_id}",
+            f"https://drive.google.com/u/0/uc?id={file_id}&export=download"
+        ]
         
-        # For large files, Google Drive shows a warning page with a confirmation token
-        if 'virus scan warning' in response.text.lower() or 'download_warning' in response.text:
-            st.info("🔄 Large file detected, getting download confirmation...")
-            
-            # Extract the confirmation token
-            confirm_token = None
-            for line in response.text.splitlines():
-                if 'confirm=' in line and 'download' in line:
-                    # Extract token from the form or link
-                    import re
-                    token_match = re.search(r'confirm=([a-zA-Z0-9_-]+)', line)
-                    if token_match:
-                        confirm_token = token_match.group(1)
+        response = None
+        for i, url in enumerate(download_urls):
+            try:
+                st.info(f"🔄 Trying download method {i+1}/3...")
+                response = session.get(url, stream=True, timeout=30)
+                
+                # Check if we got a valid response
+                if response.status_code == 200:
+                    content_type = response.headers.get('content-type', '')
+                    if 'text/html' not in content_type:
+                        st.success(f"✅ Download method {i+1} successful!")
                         break
+                    else:
+                        st.warning(f"⚠️ Method {i+1} returned HTML, trying next...")
+                        continue
+                        
+            except Exception as e:
+                st.warning(f"⚠️ Method {i+1} failed: {str(e)}")
+                continue
+        
+        if not response or response.status_code != 200:
+            st.error("❌ All download methods failed")
+            return None
+        
+        # Always check if we got HTML instead of the file first
+        content_type = response.headers.get('content-type', '')
+        if 'text/html' in content_type or 'text/html' in response.text[:1000].lower():
+            st.warning("🔄 Large file detected, extracting download confirmation...")
             
+            # For large files, Google Drive shows a warning page with a confirmation token
+            import re
+            confirm_token = None
+            
+            # Multiple methods to extract confirmation token
+            # Method 1: Look for confirm parameter in forms
+            token_matches = re.findall(r'name="confirm"\s+value="([^"]+)"', response.text)
+            if token_matches:
+                confirm_token = token_matches[0]
+                st.info(f"🔑 Found confirmation token (method 1): {confirm_token[:10]}...")
+            
+            # Method 2: Look for confirm in download links
             if not confirm_token:
-                # Try alternative extraction method
-                import re
-                token_matches = re.findall(r'name="confirm" value="([^"]+)"', response.text)
+                token_matches = re.findall(r'confirm=([a-zA-Z0-9_-]+)', response.text)
                 if token_matches:
                     confirm_token = token_matches[0]
+                    st.info(f"🔑 Found confirmation token (method 2): {confirm_token[:10]}...")
+            
+            # Method 3: Look for uuid pattern
+            if not confirm_token:
+                token_matches = re.findall(r'"([a-zA-Z0-9_-]{25,})"', response.text)
+                if token_matches:
+                    confirm_token = token_matches[0]
+                    st.info(f"🔑 Found confirmation token (method 3): {confirm_token[:10]}...")
             
             if confirm_token:
                 # Use the confirmation token to download
                 url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={file_id}"
-                st.info(f"🔑 Using confirmation token: {confirm_token[:10]}...")
+                st.success(f"✅ Using confirmation token for large file download")
+                
+                # Make the actual download request with the token
+                timeout = 60 if is_cloud else 30
+                response = session.get(url, stream=True, timeout=timeout)
+                response.raise_for_status()
             else:
-                st.warning("⚠️ Could not extract confirmation token, trying direct download...")
+                # Try alternative download method
+                st.warning("⚠️ Trying alternative download method...")
+                url = f"https://docs.google.com/uc?export=download&id={file_id}"
+                timeout = 60 if is_cloud else 30
+                response = session.get(url, stream=True, timeout=timeout)
+                response.raise_for_status()
         
-        # Make the actual download request with longer timeout for cloud
-        timeout = 60 if is_cloud else 30
-        response = session.get(url, stream=True, timeout=timeout)
-        response.raise_for_status()
-        
-        # Check if we got an HTML page instead of the file
+        # Final check if we still got HTML after token extraction
         content_type = response.headers.get('content-type', '')
         if 'text/html' in content_type:
-            st.error("❌ Received HTML instead of file. The file might be too large or require different permissions.")
-            st.info("💡 Try making the Google Drive file 'Public' with 'Anyone with the link can view'")
+            st.error("❌ Still receiving HTML after token extraction. This indicates a sharing permission issue.")
+            st.error("🔧 **Solution Required**: Please ensure your Google Drive file is properly shared")
+            st.info("""
+            **Steps to fix:**
+            1. Go to your Google Drive file
+            2. Right-click → Share
+            3. Change to "Anyone with the link"  
+            4. Set permission to "Viewer"
+            5. Make sure it's NOT restricted to your organization
+            """)
             return None
         
         total_size = int(response.headers.get('content-length', 0))
