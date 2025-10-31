@@ -63,46 +63,106 @@ class DataLoader:
             return None
     
     @staticmethod
-    def validate_data(df: pd.DataFrame) -> Tuple[bool, list]:
+    def validate_data(df: pd.DataFrame) -> bool:
         """
-        Validate that DataFrame has required columns and proper data types.
+        Validate that the dataframe has required columns for fraud analysis.
+        Attempts to map common column name variations.
         
         Args:
-            df: DataFrame to validate
+            df: Input dataframe
             
         Returns:
-            Tuple of (is_valid, list_of_errors)
+            bool: True if valid, raises exception if invalid
         """
-        errors = []
+        # Column mapping for common variations
+        column_mapping = {
+            'transaction_id': ['transaction_id', 'txn_id', 'id', 'trans_id', 'transaction_number'],
+            'timestamp': ['timestamp', 'date', 'datetime', 'trans_date', 'transaction_date', 'time'],
+            'amount': ['amount', 'transaction_amount', 'amt', 'value', 'trans_amount'],
+            'merchant': ['merchant', 'merchant_name', 'store', 'vendor', 'business'],
+            'category': ['category', 'merchant_category', 'type', 'trans_type', 'category_code'],
+            'is_fraud': ['is_fraud', 'fraud', 'fraudulent', 'is_fraudulent', 'label', 'target']
+        }
         
-        if df is None or df.empty:
-            errors.append("DataFrame is empty")
-            return False, errors
+        # Try to map columns
+        mapped_columns = {}
+        available_columns = [col.lower() for col in df.columns]
         
-        # Check for required columns
-        missing_cols = [col for col in DataLoader.REQUIRED_COLUMNS if col not in df.columns]
-        if missing_cols:
-            errors.append(f"Missing required columns: {', '.join(missing_cols)}")
+        for required_col, variations in column_mapping.items():
+            found = False
+            for variation in variations:
+                if variation.lower() in available_columns:
+                    # Find the actual column name (with original case)
+                    actual_col = next(col for col in df.columns if col.lower() == variation.lower())
+                    mapped_columns[required_col] = actual_col
+                    found = True
+                    break
+            
+            if not found:
+                # Show available columns to help user
+                raise ValueError(f"❌ Could not find column for '{required_col}'\n"
+                               f"Available columns: {list(df.columns)}\n"
+                               f"Expected variations: {variations}\n"
+                               f"Please rename your columns or update the mapping.")
         
         # Check data types and values
-        if "amount" in df.columns:
-            if not pd.api.types.is_numeric_dtype(df["amount"]):
-                errors.append("'amount' column must be numeric")
-            elif (df["amount"] < 0).any():
-                errors.append("'amount' column contains negative values")
+        if "amount" in mapped_columns:
+            if not pd.api.types.is_numeric_dtype(df[mapped_columns["amount"]]):
+                raise ValueError(f"❌ 'amount' column must be numeric")
+            elif (df[mapped_columns["amount"]] < 0).any():
+                raise ValueError(f"❌ 'amount' column contains negative values")
         
-        if "is_fraud" in df.columns:
-            unique_vals = df["is_fraud"].unique()
+        if "is_fraud" in mapped_columns:
+            unique_vals = df[mapped_columns["is_fraud"]].unique()
             if not all(val in [0, 1, True, False, "0", "1"] for val in unique_vals):
-                errors.append("'is_fraud' column must contain binary values (0/1 or True/False)")
+                raise ValueError(f"❌ 'is_fraud' column must contain binary values (0/1 or True/False)")
         
-        if "timestamp" in df.columns:
+        if "timestamp" in mapped_columns:
             try:
-                pd.to_datetime(df["timestamp"])
+                pd.to_datetime(df[mapped_columns["timestamp"]])
             except Exception:
-                errors.append("'timestamp' column cannot be parsed as datetime")
+                raise ValueError(f"❌ 'timestamp' column cannot be parsed as datetime")
         
-        return len(errors) == 0, errors
+        return True
+    
+    @staticmethod
+    def auto_rename_columns(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Automatically rename columns to expected format.
+        
+        Args:
+            df: Input dataframe
+            
+        Returns:
+            DataFrame with renamed columns
+        """
+        column_mapping = {
+            'transaction_id': ['transaction_id', 'txn_id', 'id', 'trans_id', 'transaction_number'],
+            'timestamp': ['timestamp', 'date', 'datetime', 'trans_date', 'transaction_date', 'time'],
+            'amount': ['amount', 'transaction_amount', 'amt', 'value', 'trans_amount'],
+            'merchant': ['merchant', 'merchant_name', 'store', 'vendor', 'business'],
+            'category': ['category', 'merchant_category', 'type', 'trans_type', 'category_code'],
+            'is_fraud': ['is_fraud', 'fraud', 'fraudulent', 'is_fraudulent', 'label', 'target']
+        }
+        
+        df_renamed = df.copy()
+        available_columns = [col.lower() for col in df.columns]
+        rename_dict = {}
+        
+        for target_col, variations in column_mapping.items():
+            for variation in variations:
+                if variation.lower() in available_columns:
+                    # Find the actual column name (with original case)
+                    actual_col = next(col for col in df.columns if col.lower() == variation.lower())
+                    if actual_col != target_col:
+                        rename_dict[actual_col] = target_col
+                    break
+        
+        if rename_dict:
+            df_renamed = df_renamed.rename(columns=rename_dict)
+            st.info(f"🔄 Automatically renamed columns: {rename_dict}")
+        
+        return df_renamed
     
     @staticmethod
     def get_data_summary(df: pd.DataFrame) -> dict:

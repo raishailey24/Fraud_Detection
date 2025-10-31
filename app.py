@@ -224,6 +224,10 @@ def load_full_dataset():
         try:
             df = load_dataset_file(str(user_data_path))
             
+            # Auto-rename columns if needed
+            from utils.data_loader import DataLoader
+            df = DataLoader.auto_rename_columns(df)
+            
             # Show dataset info
             file_size_mb = user_data_path.stat().st_size / (1024*1024)
             st.sidebar.success(f"✅ Dataset loaded: {len(df):,} records ({file_size_mb:.1f}MB)")
