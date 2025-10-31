@@ -99,7 +99,12 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
         return file_path
     
     try:
-        st.info(f"📥 Downloading {description} from Google Drive... This may take several minutes.")
+        # Show preparation message
+        prep_container = st.container()
+        with prep_container:
+            st.markdown("### 🚀 Preparing Download")
+            st.info(f"📥 Downloading {description} from Google Drive...")
+            st.markdown("**Please wait - this may take 5-15 minutes for large files**")
         
         session = requests.Session()
         
@@ -149,11 +154,19 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
         
         total_size = int(response.headers.get('content-length', 0))
         
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        # Create persistent progress display
+        progress_container = st.container()
+        with progress_container:
+            st.markdown("### 📥 Download Progress")
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            speed_text = st.empty()
+            eta_text = st.empty()
+        
         downloaded = 0
         chunk_size = 8192  # Smaller chunks for better progress tracking
         start_time = time.time()
+        last_update = 0
         
         with open(file_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=chunk_size):
@@ -161,22 +174,39 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
                     f.write(chunk)
                     downloaded += len(chunk)
                     
-                    if total_size > 0:
-                        progress = downloaded / total_size
-                        progress_bar.progress(min(progress, 1.0))
+                    current_time = time.time()
+                    elapsed = current_time - start_time
                     
-                    elapsed = time.time() - start_time
-                    if elapsed > 2:  # Update every 2 seconds
-                        speed_mbps = (downloaded / (1024 * 1024)) / elapsed
+                    # Update progress every 0.5 seconds for better visibility
+                    if current_time - last_update > 0.5:
+                        if total_size > 0:
+                            progress = downloaded / total_size
+                            progress_bar.progress(min(progress, 1.0))
+                        
                         downloaded_mb = downloaded / (1024 * 1024)
                         
-                        if total_size > 0:
-                            total_mb = total_size / (1024 * 1024)
-                            eta_seconds = (total_size - downloaded) / (downloaded / elapsed)
-                            eta_minutes = eta_seconds / 60
-                            status_text.text(f"Downloaded: {downloaded_mb:.1f}MB / {total_mb:.1f}MB | Speed: {speed_mbps:.1f}MB/s | ETA: {eta_minutes:.1f}min")
+                        if elapsed > 1:  # Calculate speed after 1 second
+                            speed_mbps = downloaded_mb / elapsed
+                            
+                            if total_size > 0:
+                                total_mb = total_size / (1024 * 1024)
+                                remaining_mb = total_mb - downloaded_mb
+                                eta_seconds = remaining_mb / speed_mbps if speed_mbps > 0 else 0
+                                eta_minutes = eta_seconds / 60
+                                
+                                status_text.markdown(f"**📊 Progress:** {downloaded_mb:.1f}MB / {total_mb:.1f}MB ({progress*100:.1f}%)")
+                                speed_text.markdown(f"**⚡ Speed:** {speed_mbps:.2f} MB/s")
+                                eta_text.markdown(f"**⏱️ ETA:** {eta_minutes:.1f} minutes remaining")
+                            else:
+                                status_text.markdown(f"**📊 Downloaded:** {downloaded_mb:.1f}MB")
+                                speed_text.markdown(f"**⚡ Speed:** {speed_mbps:.2f} MB/s")
+                                eta_text.markdown("**⏱️ ETA:** Calculating...")
                         else:
-                            status_text.text(f"Downloaded: {downloaded_mb:.1f}MB | Speed: {speed_mbps:.1f}MB/s")
+                            status_text.markdown(f"**📊 Starting download...** {downloaded_mb:.1f}MB")
+                            speed_text.markdown("**⚡ Speed:** Calculating...")
+                            eta_text.markdown("**⏱️ ETA:** Calculating...")
+                        
+                        last_update = current_time
         
         # Verify the download
         final_size_mb = downloaded / (1024 * 1024)
@@ -186,8 +216,15 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
                 file_path.unlink()
             return None
         
+        # Show completion status
         progress_bar.progress(1.0)
-        status_text.text(f"✅ Download complete: {final_size_mb:.1f}MB")
+        status_text.markdown(f"**✅ Download Complete!** {final_size_mb:.1f}MB")
+        speed_text.markdown("**🎉 Success!** File downloaded successfully")
+        eta_text.markdown("**📁 Ready for analysis**")
+        
+        # Add a brief pause to show completion
+        time.sleep(2)
+        
         return file_path
         
     except Exception as e:
