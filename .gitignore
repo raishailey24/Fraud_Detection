@@ -40,9 +40,12 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Data files (optional - uncomment if you don't want to commit data)
-# data/*.csv
-# data/*.xlsx
+# Data files - exclude large datasets
+data/complete_user_transactions.csv
+data/user_sample_transactions.csv
+data/*_user_*.csv
+# Keep small sample data
+!data/sample_transactions.csv
 
 # Logs
 *.log
