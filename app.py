@@ -342,6 +342,22 @@ def load_full_dataset():
     if is_cloud:
         st.sidebar.info("🌐 **Cloud Deployment** - Large downloads may take longer")
     
+    # Add quick test for Google Drive sharing
+    with st.sidebar.expander("🧪 Test Google Drive Link"):
+        if st.button("Test Download Link", key="test_gd_link"):
+            test_url = f"https://drive.google.com/uc?export=download&id=1zXgjJ_2CExdwBXINv3riqYSSAh_hl88z"
+            try:
+                import requests
+                response = requests.head(test_url, timeout=10)
+                content_type = response.headers.get('content-type', '')
+                if 'text/html' in content_type:
+                    st.error("❌ Link returns HTML - sharing issue detected")
+                    st.info("Please fix Google Drive sharing permissions")
+                else:
+                    st.success("✅ Link works! File should download properly")
+            except Exception as e:
+                st.warning(f"Test failed: {e}")
+    
     # Show sharing instructions
     with st.sidebar.expander("📋 Google Drive Setup"):
         st.markdown("""
