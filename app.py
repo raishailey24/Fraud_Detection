@@ -333,6 +333,52 @@ def load_full_dataset():
     # Get available datasets
     available_files, data_dir = get_available_datasets()
     
+    # Add file upload option
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📤 Upload Your CSV")
+    
+    # Check if running locally or in cloud
+    is_local = not ("streamlit" in str(Path.cwd()).lower() or "app" in str(Path.cwd()).lower())
+    
+    if is_local:
+        uploaded_file = st.sidebar.file_uploader(
+            "Choose CSV file",
+            type=['csv'],
+            help="Upload your large CSV file (no size limit locally)"
+        )
+    else:
+        uploaded_file = st.sidebar.file_uploader(
+            "Choose CSV file",
+            type=['csv'],
+            help="Upload CSV file (max 200MB for Streamlit Cloud)"
+        )
+        st.sidebar.warning("⚠️ Cloud deployment has 200MB upload limit. Use sample data or external hosting for larger files.")
+    
+    if uploaded_file is not None:
+        try:
+            # Save uploaded file
+            data_dir.mkdir(exist_ok=True)
+            file_path = data_dir / "uploaded_transactions.csv"
+            
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            
+            file_size_mb = file_path.stat().st_size / (1024 * 1024)
+            st.sidebar.success(f"✅ File uploaded: {file_size_mb:.1f}MB")
+            
+            # Load and process the uploaded file
+            df = pd.read_csv(file_path)
+            
+            # Auto-rename columns if needed
+            from utils.data_loader import DataLoader
+            df = DataLoader.auto_rename_columns(df)
+            
+            st.sidebar.info(f"📊 Records: {len(df):,}")
+            return df
+            
+        except Exception as e:
+            st.sidebar.error(f"Upload failed: {str(e)}")
+    
     # Add Google Drive download option
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📁 Google Drive Datasets")
