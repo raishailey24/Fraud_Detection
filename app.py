@@ -99,11 +99,15 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
         return file_path
     
     try:
+        # Check if running on Streamlit Cloud
+        is_cloud = "streamlit" in str(Path.cwd()).lower() or "app" in str(Path.cwd()).lower()
+        
         # Show preparation message
-        prep_container = st.container()
-        with prep_container:
-            st.markdown("### 🚀 Preparing Download")
-            st.info(f"📥 Downloading {description} from Google Drive...")
+        st.markdown("### 🚀 Preparing Download")
+        st.info(f"📥 Downloading {description} from Google Drive...")
+        if is_cloud:
+            st.warning("⚠️ **Cloud Deployment**: Large file download may take 10-20 minutes. Please be patient.")
+        else:
             st.markdown("**Please wait - this may take 5-15 minutes for large files**")
         
         session = requests.Session()
@@ -141,8 +145,9 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
             else:
                 st.warning("⚠️ Could not extract confirmation token, trying direct download...")
         
-        # Make the actual download request
-        response = session.get(url, stream=True, timeout=30)
+        # Make the actual download request with longer timeout for cloud
+        timeout = 60 if is_cloud else 30
+        response = session.get(url, stream=True, timeout=timeout)
         response.raise_for_status()
         
         # Check if we got an HTML page instead of the file
@@ -228,7 +233,28 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
         
     except Exception as e:
         st.error(f"❌ Download failed: {str(e)}")
-        st.info("💡 Please ensure the Google Drive file is shared as 'Anyone with the link can view'")
+        
+        if is_cloud:
+            st.error("🌐 **Cloud Deployment Issue Detected**")
+            st.info("""
+            **Possible solutions:**
+            1. **Google Drive permissions**: Ensure file is 'Public' with 'Anyone with link can view'
+            2. **File size**: 2.3GB files may timeout on cloud platforms
+            3. **Alternative**: Use sample data for demo, full data for local development
+            """)
+            
+            # Offer to generate sample data instead
+            if st.button("🔄 Generate Sample Data Instead", key="fallback_sample"):
+                try:
+                    from streamlit_cloud_setup import ensure_sample_data
+                    ensure_sample_data()
+                    st.success("✅ Sample data generated successfully!")
+                    st.rerun()
+                except Exception as sample_error:
+                    st.error(f"Sample data generation failed: {sample_error}")
+        else:
+            st.info("💡 Please ensure the Google Drive file is shared as 'Anyone with the link can view'")
+        
         if file_path.exists():
             file_path.unlink()
         return None
@@ -262,6 +288,11 @@ def load_full_dataset():
     # Add Google Drive download option
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📁 Google Drive Datasets")
+    
+    # Show deployment environment
+    is_cloud = "streamlit" in str(Path.cwd()).lower() or "app" in str(Path.cwd()).lower()
+    if is_cloud:
+        st.sidebar.info("🌐 **Cloud Deployment** - Large downloads may take longer")
     
     # Show sharing instructions
     with st.sidebar.expander("📋 Google Drive Setup"):
