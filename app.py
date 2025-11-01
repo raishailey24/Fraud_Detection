@@ -337,8 +337,21 @@ def process_data(df: pd.DataFrame):
             st.error(f"❌ Missing required columns: {missing_cols}")
             return None
         
-        # Basic data cleaning
-        processed_df = processed_df.dropna(subset=required_cols)
+        # Fix data types to prevent filter errors
+        if 'amount' in processed_df.columns:
+            processed_df['amount'] = pd.to_numeric(processed_df['amount'], errors='coerce')
+            
+        if 'is_fraud' in processed_df.columns:
+            processed_df['is_fraud'] = pd.to_numeric(processed_df['is_fraud'], errors='coerce')
+            
+        if 'timestamp' in processed_df.columns:
+            processed_df['timestamp'] = pd.to_datetime(processed_df['timestamp'], errors='coerce')
+        
+        # Basic data cleaning - remove rows with invalid data
+        processed_df = processed_df.dropna(subset=['amount', 'is_fraud'])
+        
+        # Ensure is_fraud is integer (0 or 1)
+        processed_df['is_fraud'] = processed_df['is_fraud'].astype(int)
         
         return processed_df
         

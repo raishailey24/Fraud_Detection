@@ -35,7 +35,18 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
     """Apply intelligent filters for performance and analysis."""
     
     if df is None or df.empty:
+        st.sidebar.warning("⚠️ No data available for filtering")
         return df
+    
+    dataset_size = len(df)
+    
+    # Debug info
+    st.sidebar.write("**Debug Info:**")
+    st.sidebar.write(f"Data shape: {df.shape}")
+    st.sidebar.write(f"Columns: {list(df.columns)}")
+    if 'amount' in df.columns:
+        st.sidebar.write(f"Amount type: {df['amount'].dtype}")
+        st.sidebar.write(f"Amount sample: {df['amount'].head(3).tolist()}")
     
     try:
         st.sidebar.markdown("---")
