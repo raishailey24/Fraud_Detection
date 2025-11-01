@@ -37,30 +37,63 @@ def initialize_session_state():
     if "df_processed" not in st.session_state:
         st.session_state["df_processed"] = None
 
-def get_github_datasets():
-    """Define external URLs for parquet datasets."""
-    # Using GitHub Releases for large file hosting (will be updated with actual release URLs)
-    base_url = "https://github.com/raishailey24/Fraud_Detection/releases/download/v1.0-data"
+def generate_sample_data():
+    """Generate sample fraud detection data for demonstration."""
+    import numpy as np
+    import pandas as pd
+    from datetime import datetime, timedelta
     
+    # Generate sample data
+    np.random.seed(42)
+    n_samples = 100000  # 100K sample records
+    
+    # Generate transaction data
+    data = {
+        'transaction_id': [f'TXN_{i:08d}' for i in range(n_samples)],
+        'user_id': np.random.randint(1000, 50000, n_samples),
+        'amount': np.random.lognormal(3, 1.5, n_samples).round(2),
+        'merchant_category': np.random.choice(['grocery', 'gas', 'restaurant', 'retail', 'online', 'atm'], n_samples),
+        'transaction_type': np.random.choice(['purchase', 'withdrawal', 'transfer', 'payment'], n_samples),
+        'is_fraud': np.random.choice([0, 1], n_samples, p=[0.998, 0.002]),  # 0.2% fraud rate
+    }
+    
+    # Add timestamps
+    start_date = datetime.now() - timedelta(days=365)
+    data['timestamp'] = [start_date + timedelta(seconds=np.random.randint(0, 365*24*3600)) for _ in range(n_samples)]
+    
+    # Create more realistic fraud patterns
+    fraud_indices = np.where(data['is_fraud'] == 1)[0]
+    for idx in fraud_indices:
+        # Fraudulent transactions tend to be higher amounts
+        data['amount'][idx] = np.random.lognormal(5, 1, 1)[0].round(2)
+        # More likely to be online or ATM
+        data['merchant_category'][idx] = np.random.choice(['online', 'atm'], 1)[0]
+    
+    df = pd.DataFrame(data)
+    return df
+
+def get_github_datasets():
+    """Define sample data generation instead of external downloads."""
+    # Since external hosting isn't set up yet, we'll generate sample data
     chunks = {}
-    estimated_chunks = 15
+    estimated_chunks = 3  # Reduced to 3 smaller chunks for demo
     
     for i in range(estimated_chunks):
-        chunk_filename = f"complete_user_transactions_chunk_{i:02d}.parquet"
+        chunk_filename = f"sample_transactions_chunk_{i:02d}.parquet"
         chunks[chunk_filename] = {
-            "url": f"{base_url}/{chunk_filename}",
-            "description": f"Complete Transactions - Chunk {i+1}/{estimated_chunks}",
-            "size_mb": 25,
+            "url": "sample_data",  # Special marker for sample data
+            "description": f"Sample Transactions - Chunk {i+1}/{estimated_chunks}",
+            "size_mb": 5,  # Smaller sample chunks
             "is_chunked": True,
             "chunk_index": i,
             "total_chunks": estimated_chunks,
-            "base_name": "complete_user_transactions"
+            "base_name": "sample_transactions"
         }
     
     return chunks
 
 def download_from_github(url: str, filename: str, description: str = "dataset") -> Path:
-    """Download parquet dataset from GitHub raw URL."""
+    """Generate sample data instead of downloading (temporary solution)."""
     data_dir = Path("data")
     data_dir.mkdir(exist_ok=True)
     file_path = data_dir / filename
@@ -70,26 +103,50 @@ def download_from_github(url: str, filename: str, description: str = "dataset") 
         return file_path
     
     try:
-        import requests
-        response = requests.get(url, stream=True, timeout=60)
-        response.raise_for_status()
-        
-        downloaded = 0
-        chunk_size = 8192
-        
-        with open(file_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=chunk_size):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-        
-        # Verify download
-        if downloaded < 1024:
-            if file_path.exists():
-                file_path.unlink()
-            return None
-        
-        return file_path
+        # Generate sample data instead of downloading
+        if url == "sample_data":
+            # Generate sample data for this chunk
+            df = generate_sample_data()
+            
+            # Split data into chunks based on filename
+            chunk_index = int(filename.split('_')[-1].split('.')[0])
+            total_chunks = 3
+            chunk_size = len(df) // total_chunks
+            
+            start_idx = chunk_index * chunk_size
+            if chunk_index == total_chunks - 1:  # Last chunk gets remainder
+                end_idx = len(df)
+            else:
+                end_idx = (chunk_index + 1) * chunk_size
+            
+            chunk_df = df.iloc[start_idx:end_idx].copy()
+            
+            # Save as parquet
+            chunk_df.to_parquet(file_path, index=False)
+            
+            return file_path
+        else:
+            # Original download logic for real URLs (when available)
+            import requests
+            response = requests.get(url, stream=True, timeout=60)
+            response.raise_for_status()
+            
+            downloaded = 0
+            chunk_size = 8192
+            
+            with open(file_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+            
+            # Verify download
+            if downloaded < 1024:
+                if file_path.exists():
+                    file_path.unlink()
+                return None
+            
+            return file_path
         
     except Exception as e:
         if file_path.exists():
@@ -135,8 +192,8 @@ def merge_parquet_chunks(chunk_files: list) -> pd.DataFrame:
 
 def load_full_dataset():
     """Load the complete dataset."""
-    st.sidebar.markdown("### 📊 Complete Dataset")
-    st.sidebar.info(f"12.6M transaction records • 21 columns • 372MB total")
+    st.sidebar.markdown("### 📊 Demo Dataset")
+    st.sidebar.info(f"300K transaction records • 6 columns • ~15MB total")
     
     data_dir = Path("data")
     github_datasets = get_github_datasets()
@@ -430,24 +487,24 @@ def main():
         st.info("""
         👋 **Welcome to Your Fraud Analytics Dashboard!**
         
-        **Your Banking Dataset Status:**
-        - 📊 **Source**: Your financial transaction data (12.6M records)
-        - 🔍 **Fraud Detection**: Real fraud labels from your training set
+        **Demo Dataset Status:**
+        - 📊 **Source**: Sample financial transaction data (300K records)
+        - 🔍 **Fraud Detection**: Realistic fraud patterns and labels
         - 📈 **Analytics**: Advanced risk scoring and pattern analysis
         - 🤖 **AI Copilot**: Claude 3.5 Sonnet for intelligent insights
         
         **Dataset Information:**
-        - **Size**: 372MB total (15 chunks × ~25MB each)
+        - **Size**: ~15MB total (3 chunks × ~5MB each)
         - **Format**: Optimized parquet files for fast loading
-        - **Hosting**: External hosting due to Streamlit Cloud size limits
+        - **Type**: Generated sample data for demonstration
         
         **Get Started:**
         1. Click **"Download Complete Dataset"** in the sidebar
-        2. Wait for all 15 chunks to download (~372MB total)
+        2. Wait for sample data generation (~15MB total)
         3. Click **"Load Fraud Detection Dashboard"**
-        4. Explore your fraud patterns with AI-powered insights!
+        4. Explore fraud patterns with AI-powered insights!
         
-        **Note**: Data files are hosted externally and downloaded on-demand to comply with Streamlit Cloud repository size limits.
+        **Note**: This demo uses generated sample data. The full production version would connect to your actual transaction database.
         """)
 
 if __name__ == "__main__":
