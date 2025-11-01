@@ -47,8 +47,25 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
         st.sidebar.subheader("🔍 Smart Filters")
         dataset_size = len(df)
         
-        # Data limit options - exactly 5 options as requested
-        limit_options = [100000, 500000, 1000000, 5000000, dataset_size]
+        # Force convert all numeric columns immediately
+        df_clean = df.copy()
+        for col in df_clean.columns:
+            if col in ['amount', 'is_fraud', 'user_id']:
+                try:
+                    df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
+                except:
+                    pass
+            elif col in ['timestamp']:
+                try:
+                    df_clean[col] = pd.to_datetime(df_clean[col], errors='coerce')
+                except:
+                    pass
+        
+        # Use cleaned dataframe for all operations
+        df = df_clean
+        
+        # Data limit options - exactly 5 options as requested - ensure all are integers
+        limit_options = [100000, 500000, 1000000, 5000000, int(dataset_size)]
         limit_labels = [
             "100K records",
             "500K records", 
@@ -265,6 +282,15 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
     except Exception as e:
         st.sidebar.error(f"❌ Filter error: {str(e)}")
         st.sidebar.info("Using original dataset without filters")
+        
+        # Additional debugging
+        st.sidebar.write("**Error Debug Info:**")
+        st.sidebar.write(f"Error type: {type(e).__name__}")
+        
+        import traceback
+        error_trace = traceback.format_exc()
+        st.sidebar.text_area("Full Error:", error_trace, height=100)
+        
         return df
 
 
