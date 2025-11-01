@@ -41,8 +41,6 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
         st.sidebar.markdown("---")
         st.sidebar.subheader("🔍 Smart Filters")
         dataset_size = len(df)
-        limit_options = []
-        limit_labels = []
         
         # Data limit options - exactly 5 options as requested
         limit_options = [100000, 500000, 1000000, 5000000, dataset_size]
@@ -51,16 +49,16 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
             "500K records", 
             "1M records",
             "5M records",
-            f"13M records (All Data - {_format_number(dataset_size)})"
+            f"All Data ({_format_number(dataset_size)} records)"
         ]
-    
-    # Filter options to only show relevant limits
-    valid_options = []
-    valid_labels = []
-    for limit, label in zip(limit_options, limit_labels):
-        if limit <= dataset_size:
-            valid_options.append(limit)
-            valid_labels.append(label)
+        
+        # Filter options to only show relevant limits
+        valid_options = []
+        valid_labels = []
+        for limit, label in zip(limit_options, limit_labels):
+            if limit <= dataset_size:
+                valid_options.append(limit)
+                valid_labels.append(label)
     
     # Ensure we have at least one option
     if not valid_options:
