@@ -98,6 +98,22 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
         
         filtered_df = df.copy()
         
+        # Force data type conversion as backup
+        try:
+            if 'amount' in filtered_df.columns:
+                filtered_df['amount'] = pd.to_numeric(filtered_df['amount'], errors='coerce')
+            if 'is_fraud' in filtered_df.columns:
+                filtered_df['is_fraud'] = pd.to_numeric(filtered_df['is_fraud'], errors='coerce')
+            if 'timestamp' in filtered_df.columns:
+                filtered_df['timestamp'] = pd.to_datetime(filtered_df['timestamp'], errors='coerce')
+            
+            # Remove any rows with invalid data
+            filtered_df = filtered_df.dropna(subset=[col for col in ['amount', 'is_fraud'] if col in filtered_df.columns])
+            
+        except Exception as e:
+            st.sidebar.error(f"Data conversion error: {e}")
+            return df
+        
         # Active filters section
         st.sidebar.markdown("---")
         st.sidebar.markdown("**🎯 Data Filters**")
@@ -105,44 +121,52 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
         
         # Date range filter (active by default)
         if 'timestamp' in df.columns and len(filtered_df) > 0:
-            min_date = filtered_df['timestamp'].min().date()
-            max_date = filtered_df['timestamp'].max().date()
-            
-            st.sidebar.markdown("📅 **Date Range**")
-            date_range = st.sidebar.date_input(
-                "Select dates to analyze",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date,
-                key="date_range_selector"
-            )
-            
-            if len(date_range) == 2:
-                start_date, end_date = date_range
-                filtered_df = filtered_df[
-                    (filtered_df['timestamp'].dt.date >= start_date) & 
-                    (filtered_df['timestamp'].dt.date <= end_date)
-                ]
+            try:
+                min_date = filtered_df['timestamp'].min().date()
+                max_date = filtered_df['timestamp'].max().date()
+                
+                st.sidebar.markdown("📅 **Date Range**")
+                date_range = st.sidebar.date_input(
+                    "Select dates to analyze",
+                    value=(min_date, max_date),
+                    min_value=min_date,
+                    max_value=max_date,
+                    key="date_range_selector"
+                )
+                
+                if len(date_range) == 2:
+                    start_date, end_date = date_range
+                    filtered_df = filtered_df[
+                        (filtered_df['timestamp'].dt.date >= start_date) & 
+                        (filtered_df['timestamp'].dt.date <= end_date)
+                    ]
+            except Exception as e:
+                st.sidebar.warning(f"Date filter skipped: {str(e)}")
+                pass
         
         # Amount range filter (active by default)
         if 'amount' in df.columns and len(filtered_df) > 0:
-            amount_min = float(filtered_df['amount'].min())
-            amount_max = float(filtered_df['amount'].max())
-            
-            st.sidebar.markdown("💰 **Amount Range**")
-            amount_range = st.sidebar.slider(
-                "Select transaction amounts",
-                min_value=amount_min,
-                max_value=amount_max,
-                value=(amount_min, amount_max),
-                format="$%.2f",
-                key="amount_range_selector"
-            )
-            
-            filtered_df = filtered_df[
-                (filtered_df['amount'] >= amount_range[0]) & 
-                (filtered_df['amount'] <= amount_range[1])
-            ]
+            try:
+                amount_min = float(filtered_df['amount'].min())
+                amount_max = float(filtered_df['amount'].max())
+                
+                st.sidebar.markdown("💰 **Amount Range**")
+                amount_range = st.sidebar.slider(
+                    "Select transaction amounts",
+                    min_value=amount_min,
+                    max_value=amount_max,
+                    value=(amount_min, amount_max),
+                    format="$%.2f",
+                    key="amount_range_selector"
+                )
+                
+                filtered_df = filtered_df[
+                    (filtered_df['amount'] >= amount_range[0]) & 
+                    (filtered_df['amount'] <= amount_range[1])
+                ]
+            except Exception as e:
+                st.sidebar.warning(f"Amount filter skipped: {str(e)}")
+                pass
         
         # Location filter (active by default) - prioritize 'location' column
         location_columns = ['location', 'city', 'state', 'merchant', 'region']
@@ -193,12 +217,16 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
             key="fraud_focus_selector"
         )
         
-        if fraud_filter == "Fraud Only" and 'is_fraud' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['is_fraud'] == 1]
-        elif fraud_filter == "Legitimate Only" and 'is_fraud' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['is_fraud'] == 0]
-        elif fraud_filter == "High Risk" and 'risk_score' in df.columns:
-            filtered_df = filtered_df[filtered_df['risk_score'] > 0.7]
+        try:
+            if fraud_filter == "Fraud Only" and 'is_fraud' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['is_fraud'] == 1]
+            elif fraud_filter == "Legitimate Only" and 'is_fraud' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['is_fraud'] == 0]
+            elif fraud_filter == "High Risk" and 'risk_score' in df.columns:
+                filtered_df = filtered_df[filtered_df['risk_score'] > 0.7]
+        except Exception as e:
+            st.sidebar.warning(f"Fraud filter skipped: {str(e)}")
+            pass
         
         # Apply data limit with stratified sampling
         if len(filtered_df) > selected_limit:
