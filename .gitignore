@@ -44,6 +44,9 @@ Thumbs.db
 data/complete_user_transactions.csv
 data/user_sample_transactions.csv
 data/*_user_*.csv
+data/*.parquet
+data/github_chunks/
+data/converted/
 # Keep small sample data
 !data/sample_transactions.csv
 
