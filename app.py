@@ -2,22 +2,37 @@
 FraudSight: AI-Driven Financial Intelligence Hub
 Optimized for local and cloud deployment with full dataset support.
 """
-import streamlit as st
-import pandas as pd
-from pathlib import Path
-from config import Config
-from components.ai_panel import display_ai_copilot
-import requests
-import time
+try:
+    import streamlit as st
+    import pandas as pd
+    from pathlib import Path
+    from config import Config
+    from components.ai_panel import display_ai_copilot
+    import requests
+    import time
+except ImportError as e:
+    print(f"Import error: {e}")
+    import streamlit as st
+    st.error(f"❌ Import Error: {str(e)}")
+    st.info("Please ensure all required packages are installed.")
+    st.stop()
 
 
 # Page configuration
-st.set_page_config(
-    page_title="FraudSight: AI-Driven Financial Intelligence Hub",
-    page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+def main():
+    """Main application function."""
+    
+    try:
+        # Set page configuration
+        st.set_page_config(
+            page_title="FraudSight: AI-Driven Financial Intelligence Hub",
+            page_icon="🎯",
+            layout="wide",
+            initial_sidebar_state="expanded"
+        )
+    except Exception as e:
+        st.error(f"❌ Page config error: {str(e)}")
+        return
 
 
 def initialize_session_state():
@@ -875,4 +890,39 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        st.error(f"🚨 **Critical Error**: {str(e)}")
+        st.error(f"**Error Type**: {type(e).__name__}")
+        
+        import traceback
+        st.code(traceback.format_exc(), language="python")
+        
+        st.info("""
+        **Troubleshooting Steps:**
+        1. Refresh the page (F5)
+        2. Clear browser cache
+        3. Check if all required files are present
+        4. Try the Force Load Dashboard button in Debug Info
+        """)
+        
+        # Show system info for debugging
+        import sys
+        import platform
+        st.write("**System Info:**")
+        st.write(f"- Python: {sys.version}")
+        st.write(f"- Platform: {platform.system()}")
+        st.write(f"- Streamlit version: {st.__version__}")
+        
+        # Show current working directory and files
+        import os
+        st.write(f"- Working directory: {os.getcwd()}")
+        
+        from pathlib import Path
+        data_dir = Path("data")
+        if data_dir.exists():
+            files = list(data_dir.glob("*"))
+            st.write(f"- Files in data/: {len(files)} files")
+        else:
+            st.write("- Data directory: Not found")
