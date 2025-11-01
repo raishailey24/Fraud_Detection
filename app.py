@@ -283,105 +283,19 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
         st.error(f"❌ Download failed: {str(e)}")
         
         if is_cloud:
+            st.error("🌐 **Cloud Deployment Issue Detected**")
+            st.info("""
+            **Possible solutions:**
+            1. **Google Drive permissions**: Ensure file is 'Public' with 'Anyone with link can view'
+            2. **File size**: 2.3GB files may timeout on cloud platforms
+            3. **Alternative**: Use sample data for demo, full data for local development
+            """)
+        else:
+            st.info("💡 Please ensure the Google Drive file is shared as 'Anyone with the link can view'")
+        
         if file_path.exists():
             file_path.unlink()
         return None
-        
-    # Show completion status
-    progress_bar.progress(1.0)
-    status_text.markdown(f"**✅ Download Complete!** {final_size_mb:.1f}MB")
-    speed_text.markdown("**🎉 Success!** File downloaded successfully")
-    eta_text.markdown("**📁 Ready for analysis**")
-    
-    # Add a brief pause to show completion
-    time.sleep(2)
-    
-    return file_path
-        
-except Exception as e:
-    st.error(f"❌ Download failed: {str(e)}")
-    
-    if is_cloud:
-        st.error("🌐 **Cloud Deployment Issue Detected**")
-        st.info("""
-        **Possible solutions:**
-        1. **Google Drive permissions**: Ensure file is 'Public' with 'Anyone with link can view'
-        2. **File size**: 2.3GB files may timeout on cloud platforms
-        3. **Alternative**: Use sample data for demo, full data for local development
-        """)
-        
-        # Offer to generate sample data instead
-        if st.button("🔄 Generate Sample Data Instead", key="fallback_sample"):
-            try:
-                generate_cloud_sample_data()
-                st.success("✅ Sample data generated successfully!")
-                st.rerun()
-            except Exception as sample_error:
-                st.error(f"Sample data generation failed: {sample_error}")
-    else:
-        st.info("💡 Please ensure the Google Drive file is shared as 'Anyone with the link can view'")
-        
-        # No data available - show sample data generation
-        st.warning("⚠️ No transaction data available")
-        st.info("Generate sample data to explore the fraud detection dashboard features.")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🎯 Generate Sample Data (50K records)", type="primary"):
-                try:
-                    sample_file = generate_cloud_sample_data()
-                    st.success("✅ Sample data generated successfully!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Sample data generation failed: {str(e)}")
-        
-        with col2:
-            if st.button("📊 Generate Large Sample (100K records)"):
-                try:
-                    # Generate larger sample for better demo
-                    import numpy as np
-                    np.random.seed(42)
-                    
-                    data_dir = Path("data")
-                    data_dir.mkdir(exist_ok=True)
-                    
-                    st.info("🔄 Generating large sample dataset...")
-                    progress_bar = st.progress(0)
-                    
-                    n_transactions = 100000
-                    
-                    # Quick generation for large dataset
-                    data = {
-                        'transaction_id': [f'TXN{str(i).zfill(8)}' for i in range(1, n_transactions + 1)],
-                        'timestamp': pd.date_range('2023-01-01', periods=n_transactions, freq='15min'),
-                        'amount': np.random.lognormal(3, 1.5, n_transactions).round(2),
-                        'user_id': [f'USER{np.random.randint(1000, 9999)}' for _ in range(n_transactions)],
-                        'merchant': np.random.choice(['Amazon', 'Walmart', 'Target', 'Starbucks', 'McDonalds', 'Shell', 'Exxon', 'Best Buy', 'Home Depot', 'CVS'], n_transactions),
-                        'location': np.random.choice(['New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX', 'Phoenix, AZ', 'International', 'Online'], n_transactions),
-                        'category': np.random.choice(['retail', 'restaurant', 'gas', 'grocery', 'entertainment', 'healthcare', 'transportation'], n_transactions),
-                        'is_fraud': np.random.choice([0, 1], n_transactions, p=[0.98, 0.02])
-                    }
-                    
-                    progress_bar.progress(0.5)
-                    
-                    df = pd.DataFrame(data)
-                    sample_file = data_dir / "sample_transactions.csv"
-                    df.to_csv(sample_file, index=False)
-                    
-                    progress_bar.progress(1.0)
-                    
-                    file_size_mb = sample_file.stat().st_size / (1024 * 1024)
-                    st.success(f"✅ Generated {len(df):,} transactions ({file_size_mb:.1f}MB)")
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"Large sample generation failed: {str(e)}")
-        
-        return None
-        
-    if file_path.exists():
-        file_path.unlink()
-    return None
 
 def generate_cloud_sample_data():
     """Generate sample data directly for cloud deployment."""
@@ -491,6 +405,71 @@ def load_full_dataset():
     # Add file upload option
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📤 Upload Your CSV")
+    
+    # Multi-file upload for large datasets
+    with st.sidebar.expander("📁 Multi-File Upload (for 2GB+ datasets)"):
+        st.markdown("**Split your large CSV into 200MB chunks and upload them here:**")
+        
+        uploaded_files = st.file_uploader(
+            "Choose CSV chunks",
+            type=['csv'],
+            accept_multiple_files=True,
+            help="Upload multiple CSV files (each <200MB) - they will be merged automatically"
+        )
+        
+        if uploaded_files and len(uploaded_files) > 1:
+            if st.button("🔗 Merge Uploaded Files", type="primary"):
+                try:
+                    st.info(f"📥 Merging {len(uploaded_files)} CSV files...")
+                    progress_bar = st.progress(0)
+                    
+                    # Save and merge files
+                    data_dir.mkdir(exist_ok=True)
+                    merged_dfs = []
+                    
+                    for i, uploaded_file in enumerate(uploaded_files):
+                        # Save each chunk
+                        chunk_path = data_dir / f"chunk_{i}.csv"
+                        with open(chunk_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        
+                        # Read and add to merge list
+                        chunk_df = pd.read_csv(chunk_path)
+                        merged_dfs.append(chunk_df)
+                        
+                        # Update progress
+                        progress_bar.progress((i + 1) / len(uploaded_files) * 0.8)
+                    
+                    # Merge all dataframes
+                    st.info("🔗 Combining all chunks...")
+                    merged_df = pd.concat(merged_dfs, ignore_index=True)
+                    
+                    # Save merged file
+                    merged_path = data_dir / "merged_transactions.csv"
+                    merged_df.to_csv(merged_path, index=False)
+                    
+                    progress_bar.progress(1.0)
+                    
+                    # Clean up chunk files
+                    for i in range(len(uploaded_files)):
+                        chunk_path = data_dir / f"chunk_{i}.csv"
+                        if chunk_path.exists():
+                            chunk_path.unlink()
+                    
+                    file_size_mb = merged_path.stat().st_size / (1024 * 1024)
+                    st.success(f"✅ Merged {len(uploaded_files)} files: {len(merged_df):,} records ({file_size_mb:.1f}MB)")
+                    
+                    # Auto-rename columns and return
+                    from utils.data_loader import DataLoader
+                    merged_df = DataLoader.auto_rename_columns(merged_df)
+                    
+                    return merged_df
+                    
+                except Exception as e:
+                    st.error(f"Merge failed: {str(e)}")
+        
+        elif uploaded_files and len(uploaded_files) == 1:
+            st.info("💡 Single file detected - use regular upload below")
     
     # Check if running locally or in cloud
     is_local = not ("streamlit" in str(Path.cwd()).lower() or "app" in str(Path.cwd()).lower())
