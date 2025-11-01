@@ -1,1 +1,2 @@
-<placeholder for whatif.py>
+# What-if analysis functionality placeholder
+pass

@@ -1,1 +1,2 @@
-<placeholder for ai.py>
+# AI functionality placeholder
+pass

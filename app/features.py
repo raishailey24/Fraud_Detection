@@ -1,1 +1,2 @@
-<placeholder for features.py>
+# Features functionality placeholder
+pass

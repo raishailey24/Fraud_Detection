@@ -1,1 +1,2 @@
-<placeholder for prompts.py>
+# Prompts functionality placeholder
+pass

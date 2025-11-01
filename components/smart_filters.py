@@ -223,6 +223,11 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
             st.sidebar.metric("📉 Data Reduction", f"{reduction:.1f}%")
         
         return filtered_df
+        
+    except Exception as e:
+        st.sidebar.error(f"❌ Filter error: {str(e)}")
+        st.sidebar.info("Using original dataset without filters")
+        return df
 
 
 def show_filter_summary(original_df: pd.DataFrame, filtered_df: pd.DataFrame):
@@ -255,12 +260,3 @@ def show_filter_summary(original_df: pd.DataFrame, filtered_df: pd.DataFrame):
             f"{reduction:.1f}%",
             help="Percentage of data filtered out"
         )
-    
-        # Fraud rate display removed per user request
-        
-        return filtered_df
-        
-    except Exception as e:
-        st.sidebar.error(f"❌ Filter error: {str(e)}")
-        st.sidebar.info("Using original dataset without filters")
-        return df

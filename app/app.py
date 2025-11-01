@@ -1,1 +1,2 @@
-<placeholder for app.py>
+# App functionality placeholder
+pass
