@@ -1,0 +1,12 @@
+{
+  "original_csv": "data\\complete_user_transactions.csv",
+  "total_rows": 12635227,
+  "total_chunks": 4,
+  "chunk_files": [
+    "complete_user_transactions_chunk_00.parquet",
+    "complete_user_transactions_chunk_01.parquet",
+    "complete_user_transactions_chunk_02.parquet",
+    "complete_user_transactions_chunk_03.parquet"
+  ],
+  "compression_ratio": "87.5%"
+}

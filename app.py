@@ -90,21 +90,43 @@ def get_google_drive_datasets():
     Update these IDs after uploading your parquet files to Google Drive.
     """
     return {
-        "complete_user_transactions.parquet": {
-            "file_id": "YOUR_PARQUET_FILE_ID_HERE",  # Replace with actual Google Drive file ID
-            "description": "Complete User Transactions (Parquet Format)",
-            "size_mb": "TBD",  # Will be updated after conversion
-            "is_chunked": False
+        # Chunked parquet files (4 chunks, ~89MB each)
+        "complete_user_transactions_chunk_00.parquet": {
+            "file_id": "YOUR_CHUNK_0_FILE_ID_HERE",  # Replace with actual Google Drive file ID
+            "description": "Complete Transactions - Chunk 1/4",
+            "size_mb": 89,
+            "is_chunked": True,
+            "chunk_index": 0,
+            "total_chunks": 4,
+            "base_name": "complete_user_transactions"
         },
-        # If file is chunked, add chunk entries like:
-        # "complete_user_transactions_chunk_00.parquet": {
-        #     "file_id": "CHUNK_0_FILE_ID",
-        #     "description": "Complete Transactions - Chunk 1",
-        #     "size_mb": 95,
-        #     "is_chunked": True,
-        #     "chunk_index": 0,
-        #     "total_chunks": 3
-        # },
+        "complete_user_transactions_chunk_01.parquet": {
+            "file_id": "YOUR_CHUNK_1_FILE_ID_HERE",  # Replace with actual Google Drive file ID
+            "description": "Complete Transactions - Chunk 2/4",
+            "size_mb": 89,
+            "is_chunked": True,
+            "chunk_index": 1,
+            "total_chunks": 4,
+            "base_name": "complete_user_transactions"
+        },
+        "complete_user_transactions_chunk_02.parquet": {
+            "file_id": "YOUR_CHUNK_2_FILE_ID_HERE",  # Replace with actual Google Drive file ID
+            "description": "Complete Transactions - Chunk 3/4",
+            "size_mb": 89,
+            "is_chunked": True,
+            "chunk_index": 2,
+            "total_chunks": 4,
+            "base_name": "complete_user_transactions"
+        },
+        "complete_user_transactions_chunk_03.parquet": {
+            "file_id": "YOUR_CHUNK_3_FILE_ID_HERE",  # Replace with actual Google Drive file ID
+            "description": "Complete Transactions - Chunk 4/4",
+            "size_mb": 89,
+            "is_chunked": True,
+            "chunk_index": 3,
+            "total_chunks": 4,
+            "base_name": "complete_user_transactions"
+        }
     }
 
 def download_from_google_drive(file_id: str, filename: str, description: str = "dataset") -> Path:
@@ -352,7 +374,7 @@ def load_full_dataset():
     
     for filename, info in google_datasets.items():
         if info.get('is_chunked', False):
-            base_name = filename.split('_chunk_')[0]
+            base_name = info.get('base_name', filename.split('_chunk_')[0])
             if base_name not in chunked_datasets:
                 chunked_datasets[base_name] = []
             chunked_datasets[base_name].append((filename, info))
@@ -377,29 +399,41 @@ def load_full_dataset():
     
     # Display chunked datasets
     for base_name, chunks in chunked_datasets.items():
-        with st.sidebar.expander(f"📦 {base_name} ({len(chunks)} chunks)"):
+        total_chunks = chunks[0][1].get('total_chunks', len(chunks))
+        downloaded_count = sum(1 for filename, _ in chunks if (data_dir / filename).exists())
+        
+        with st.sidebar.expander(f"📦 {base_name.replace('_', ' ').title()} ({downloaded_count}/{total_chunks} chunks)"):
             all_downloaded = True
             chunk_files = []
+            
+            # Show overall progress
+            if downloaded_count > 0:
+                progress = downloaded_count / total_chunks
+                st.progress(progress)
+                st.caption(f"Progress: {downloaded_count}/{total_chunks} chunks downloaded")
             
             for filename, info in sorted(chunks, key=lambda x: x[1].get('chunk_index', 0)):
                 file_path = data_dir / filename
                 chunk_files.append(file_path)
+                chunk_num = info.get('chunk_index', 0) + 1
                 
                 if file_path.exists():
                     size_mb = file_path.stat().st_size / (1024 * 1024)
-                    st.success(f"✅ Chunk {info.get('chunk_index', 0)+1} ({size_mb:.1f}MB)")
+                    st.success(f"✅ Chunk {chunk_num}/{total_chunks} ({size_mb:.1f}MB)")
                 else:
                     all_downloaded = False
-                    if info['file_id'] != "CHUNK_FILE_ID":
-                        if st.button(f"📥 Download Chunk {info.get('chunk_index', 0)+1}", key=f"chunk_{filename}"):
+                    if info['file_id'].startswith("YOUR_CHUNK_"):
+                        st.warning(f"⚠️ Update file ID for chunk {chunk_num}")
+                    else:
+                        if st.button(f"📥 Download Chunk {chunk_num}/{total_chunks}", key=f"chunk_{filename}"):
                             result = download_from_google_drive(info["file_id"], filename, info["description"])
                             if result:
                                 st.rerun()
-                    else:
-                        st.warning(f"⚠️ Update file ID for chunk {info.get('chunk_index', 0)+1}")
             
-            if all_downloaded and len([f for f in chunk_files if f.exists()]) == len(chunks):
-                if st.button(f"🔗 Load Merged Dataset", key=f"merge_{base_name}"):
+            # Show merge button when all chunks are downloaded
+            if all_downloaded and len([f for f in chunk_files if f.exists()]) == total_chunks:
+                st.success(f"🎉 All {total_chunks} chunks ready!")
+                if st.button(f"🔗 Load Complete Dataset (12.6M records)", key=f"merge_{base_name}", type="primary"):
                     merged_df = merge_parquet_chunks(chunk_files)
                     if merged_df is not None:
                         return merged_df
@@ -407,23 +441,26 @@ def load_full_dataset():
     # Instructions for setting up Google Drive
     with st.sidebar.expander("📋 Setup Instructions"):
         st.markdown("""
-        **Step 1: Convert CSV to Parquet**
-        ```bash
-        python convert_to_parquet.py
-        ```
+        **✅ Step 1: Convert CSV to Parquet** (COMPLETED)
+        - Original: 2.8GB CSV → 4 chunks (~89MB each)
+        - Files created in `/data/converted/`
         
         **Step 2: Upload to Google Drive**
-        - Upload all parquet files to Google Drive
-        - Set sharing: "Anyone with the link can view"
+        1. Upload all 4 parquet chunk files to Google Drive
+        2. Set sharing: "Anyone with the link can view"
+        3. Copy file IDs from Google Drive URLs
         
         **Step 3: Update File IDs**
-        - Copy file IDs from Google Drive URLs
-        - Update the `get_google_drive_datasets()` function
+        Replace the placeholder IDs in the code:
+        - `YOUR_CHUNK_0_FILE_ID_HERE`
+        - `YOUR_CHUNK_1_FILE_ID_HERE`
+        - `YOUR_CHUNK_2_FILE_ID_HERE`
+        - `YOUR_CHUNK_3_FILE_ID_HERE`
         
-        **Benefits:**
-        - 🚀 Faster downloads (parquet compression)
-        - 📦 Smaller file sizes (60-80% reduction)
-        - ⚡ Faster loading in app
+        **Benefits Achieved:**
+        - 🚀 87.5% size reduction (2.8GB → 372MB)
+        - 📦 4 chunks under 100MB each
+        - ⚡ Optimized parquet format
         """)
     
     st.sidebar.markdown("---")
