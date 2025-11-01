@@ -38,8 +38,9 @@ def initialize_session_state():
         st.session_state["df_processed"] = None
 
 def get_github_datasets():
-    """Define GitHub raw URLs for parquet datasets."""
-    base_url = "https://raw.githubusercontent.com/raishailey24/Fraud_Detection/main/data/github_chunks"
+    """Define external URLs for parquet datasets."""
+    # Using GitHub Releases for large file hosting (will be updated with actual release URLs)
+    base_url = "https://github.com/raishailey24/Fraud_Detection/releases/download/v1.0-data"
     
     chunks = {}
     estimated_chunks = 15
@@ -430,16 +431,23 @@ def main():
         👋 **Welcome to Your Fraud Analytics Dashboard!**
         
         **Your Banking Dataset Status:**
-        - 📊 **Source**: Your financial transaction data
+        - 📊 **Source**: Your financial transaction data (12.6M records)
         - 🔍 **Fraud Detection**: Real fraud labels from your training set
         - 📈 **Analytics**: Advanced risk scoring and pattern analysis
         - 🤖 **AI Copilot**: Claude 3.5 Sonnet for intelligent insights
+        
+        **Dataset Information:**
+        - **Size**: 372MB total (15 chunks × ~25MB each)
+        - **Format**: Optimized parquet files for fast loading
+        - **Hosting**: External hosting due to Streamlit Cloud size limits
         
         **Get Started:**
         1. Click **"Download Complete Dataset"** in the sidebar
         2. Wait for all 15 chunks to download (~372MB total)
         3. Click **"Load Fraud Detection Dashboard"**
         4. Explore your fraud patterns with AI-powered insights!
+        
+        **Note**: Data files are hosted externally and downloaded on-demand to comply with Streamlit Cloud repository size limits.
         """)
 
 if __name__ == "__main__":
