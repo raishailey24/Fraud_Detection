@@ -96,21 +96,17 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
             key="data_limit_selector"
         )
         
+        # Ensure selected_limit is always an integer
+        selected_limit = int(selected_limit)
+        
         filtered_df = df.copy()
         
-        # Force data type conversion as backup with detailed debugging
+        # Force data type conversion as backup
         try:
-            st.sidebar.write("**Debug - Before conversion:**")
             if 'amount' in filtered_df.columns:
-                st.sidebar.write(f"Amount dtype: {filtered_df['amount'].dtype}")
-                st.sidebar.write(f"Amount sample: {filtered_df['amount'].head(3).tolist()}")
-                st.sidebar.write(f"Amount unique types: {[type(x).__name__ for x in filtered_df['amount'].head(5)]}")
-                
                 # More aggressive conversion
                 filtered_df['amount'] = filtered_df['amount'].astype(str).str.replace('$', '').str.replace(',', '')
                 filtered_df['amount'] = pd.to_numeric(filtered_df['amount'], errors='coerce')
-                
-                st.sidebar.write(f"After conversion - Amount dtype: {filtered_df['amount'].dtype}")
                 
             if 'is_fraud' in filtered_df.columns:
                 filtered_df['is_fraud'] = pd.to_numeric(filtered_df['is_fraud'], errors='coerce')
@@ -157,14 +153,8 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
         # Amount range filter (active by default)
         if 'amount' in df.columns and len(filtered_df) > 0:
             try:
-                st.sidebar.write("**Debug - Amount filter:**")
-                st.sidebar.write(f"Amount column dtype: {filtered_df['amount'].dtype}")
-                st.sidebar.write(f"Amount sample values: {filtered_df['amount'].head(3).tolist()}")
-                
                 amount_min = float(filtered_df['amount'].min())
                 amount_max = float(filtered_df['amount'].max())
-                
-                st.sidebar.write(f"Min: {amount_min}, Max: {amount_max}")
                 
                 st.sidebar.markdown("💰 **Amount Range**")
                 amount_range = st.sidebar.slider(
@@ -176,20 +166,12 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
                     key="amount_range_selector"
                 )
                 
-                st.sidebar.write(f"Slider values: {amount_range}")
-                st.sidebar.write(f"Comparison types: amount={type(filtered_df['amount'].iloc[0])}, slider={type(amount_range[0])}")
-                
-                # Force ensure numeric comparison
-                filtered_df['amount'] = pd.to_numeric(filtered_df['amount'], errors='coerce')
-                
                 filtered_df = filtered_df[
                     (filtered_df['amount'] >= amount_range[0]) & 
                     (filtered_df['amount'] <= amount_range[1])
                 ]
             except Exception as e:
-                st.sidebar.error(f"Amount filter error: {str(e)}")
-                import traceback
-                st.sidebar.code(traceback.format_exc())
+                st.sidebar.warning(f"Amount filter skipped: {str(e)}")
                 pass
         
         # Location filter (active by default) - prioritize 'location' column
