@@ -364,10 +364,28 @@ def main():
         from config import Config
         config_errors = Config.validate()
         if config_errors:
-            st.warning("⚠️ Configuration warnings:")
-            for error in config_errors:
-                st.warning(f"  • {error}")
-            st.info("The dashboard will work, but AI Copilot features will be disabled.")
+            with st.expander("⚠️ AI Configuration Required", expanded=False):
+                st.warning("**AI features are disabled. To enable natural language queries:**")
+                st.markdown("""
+                **For Streamlit Cloud Deployment:**
+                1. Go to your app settings in Streamlit Cloud
+                2. Click **"Advanced settings"**
+                3. Add to **"Secrets"** section:
+                
+                ```toml
+                [anthropic]
+                api_key = "sk-ant-your-actual-key-here"
+                ```
+                
+                **Get your API key:**
+                - **Anthropic**: [console.anthropic.com](https://console.anthropic.com) (Recommended)
+                - **OpenAI**: [platform.openai.com](https://platform.openai.com)
+                
+                **After adding the key:**
+                - Save settings and restart the app
+                - AI features will be automatically enabled
+                """)
+            st.info("💡 The dashboard works fully without AI - add API keys to enable natural language queries.")
     except:
         pass  # Continue without config validation
     

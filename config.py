@@ -8,19 +8,37 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+def get_streamlit_secrets():
+    """Get secrets from Streamlit Cloud or environment variables."""
+    try:
+        import streamlit as st
+        if hasattr(st, 'secrets'):
+            return st.secrets
+    except:
+        pass
+    return {}
 
 class Config:
     """Application configuration."""
     
-    # AI Provider Settings
-    AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").lower()
+    # Get secrets from Streamlit Cloud or environment
+    _secrets = get_streamlit_secrets()
     
-    # OpenAI Settings
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    # AI Provider Settings
+    AI_PROVIDER = os.getenv("AI_PROVIDER", "anthropic").lower()
+    
+    # OpenAI Settings - check both Streamlit secrets and environment
+    OPENAI_API_KEY = (
+        _secrets.get("openai", {}).get("api_key") or 
+        os.getenv("OPENAI_API_KEY")
+    )
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
     
-    # Anthropic Settings
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    # Anthropic Settings - check both Streamlit secrets and environment  
+    ANTHROPIC_API_KEY = (
+        _secrets.get("anthropic", {}).get("api_key") or 
+        os.getenv("ANTHROPIC_API_KEY")
+    )
     
     # Using Claude 3 Haiku - cheapest model
     ANTHROPIC_MODEL = "claude-3-haiku-20240307"
@@ -49,11 +67,18 @@ class Config:
         if cls.AI_PROVIDER not in ["openai", "anthropic"]:
             errors.append(f"Invalid AI_PROVIDER: {cls.AI_PROVIDER}. Must be 'openai' or 'anthropic'.")
         
-        if cls.AI_PROVIDER == "openai" and not cls.OPENAI_API_KEY:
-            errors.append("OPENAI_API_KEY is required when AI_PROVIDER is 'openai'.")
+        # Check for API keys
+        has_openai = bool(cls.OPENAI_API_KEY)
+        has_anthropic = bool(cls.ANTHROPIC_API_KEY)
         
-        if cls.AI_PROVIDER == "anthropic" and not cls.ANTHROPIC_API_KEY:
-            errors.append("ANTHROPIC_API_KEY is required when AI_PROVIDER is 'anthropic'.")
+        if not has_openai and not has_anthropic:
+            errors.append("No AI API keys configured. Add your API key in Streamlit Cloud Advanced Settings > Secrets:")
+            errors.append("For Anthropic: [anthropic] api_key = \"sk-ant-your-key\"")
+            errors.append("For OpenAI: [openai] api_key = \"sk-your-key\"")
+        elif cls.AI_PROVIDER == "openai" and not has_openai:
+            errors.append("OpenAI API key required but not found in secrets.")
+        elif cls.AI_PROVIDER == "anthropic" and not has_anthropic:
+            errors.append("Anthropic API key required but not found in secrets.")
         
         return errors
     
