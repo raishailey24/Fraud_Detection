@@ -508,18 +508,40 @@ def load_full_dataset():
             # All chunks ready - show load button
             st.sidebar.success("✅ All data chunks ready!")
             if st.sidebar.button("🚀 Load Fraud Detection Dashboard", type="primary", use_container_width=True):
-                with st.spinner("Loading complete dataset..."):
-                    merged_df = merge_parquet_chunks(chunk_files)
-                    if merged_df is not None:
-                        # Auto-rename columns if needed
-                        try:
-                            from utils.data_loader import DataLoader
-                            merged_df = DataLoader.auto_rename_columns(merged_df)
-                            st.success(f"✅ Dataset loaded: {len(merged_df):,} records")
-                        except Exception as e:
-                            st.warning(f"Column renaming failed: {e}")
-                        
-                        return merged_df
+                try:
+                    with st.spinner("Loading complete dataset..."):
+                        merged_df = merge_parquet_chunks(chunk_files)
+                        if merged_df is not None:
+                            st.info(f"📊 Merged dataset: {len(merged_df):,} records, {len(merged_df.columns)} columns")
+                            
+                            # Auto-rename columns if needed
+                            try:
+                                from utils.data_loader import DataLoader
+                                merged_df = DataLoader.auto_rename_columns(merged_df)
+                                st.success(f"✅ Dataset loaded: {len(merged_df):,} records")
+                            except Exception as e:
+                                st.warning(f"Column renaming failed: {e}")
+                                # Continue with original column names
+                            
+                            # Validate required columns
+                            required_cols = ['transaction_id', 'amount', 'is_fraud']
+                            missing_cols = [col for col in required_cols if col not in merged_df.columns]
+                            if missing_cols:
+                                st.error(f"❌ Missing required columns: {missing_cols}")
+                                st.info(f"Available columns: {list(merged_df.columns)}")
+                                return None
+                            
+                            return merged_df
+                        else:
+                            st.error("❌ Failed to merge parquet chunks")
+                            return None
+                            
+                except Exception as e:
+                    st.error(f"❌ Error loading dataset: {str(e)}")
+                    st.error(f"Error type: {type(e).__name__}")
+                    import traceback
+                    st.code(traceback.format_exc())
+                    return None
         else:
             # Show single download button for all chunks
             if st.sidebar.button("📥 Download Complete Dataset", type="primary", use_container_width=True):
@@ -653,31 +675,47 @@ def main():
     
     # Load data only if not already loaded
     if not st.session_state.get("data_loaded", False):
-        with st.spinner("Loading dataset..."):
-            df = load_data_section()
-        
-        if df is not None:
-            st.success(f"✅ Raw data loaded: {len(df):,} records")
+        try:
+            with st.spinner("Loading dataset..."):
+                df = load_data_section()
             
-            # Process data
-            with st.spinner("Processing data..."):
-                df_processed = process_data(df)
-            
-            if df_processed is not None:
-                st.success(f"✅ Data processed: {len(df_processed):,} records")
+            if df is not None:
+                st.success(f"✅ Raw data loaded: {len(df):,} records")
                 
-                # Store in session state
-                st.session_state["df_raw"] = df
-                st.session_state["df_processed"] = df_processed
-                st.session_state["data_loaded"] = True
-                
-                st.success("🎉 Dataset ready! Refreshing interface...")
-                st.rerun()  # Rerun once to load the interface
+                # Process data
+                try:
+                    with st.spinner("Processing data..."):
+                        df_processed = process_data(df)
+                    
+                    if df_processed is not None:
+                        st.success(f"✅ Data processed: {len(df_processed):,} records")
+                        
+                        # Store in session state
+                        st.session_state["df_raw"] = df
+                        st.session_state["df_processed"] = df_processed
+                        st.session_state["data_loaded"] = True
+                        
+                        st.success("🎉 Dataset ready! Refreshing interface...")
+                        st.rerun()  # Rerun once to load the interface
+                    else:
+                        st.error("❌ Data processing failed - processed data is None")
+                        return
+                        
+                except Exception as e:
+                    st.error(f"❌ Data processing error: {str(e)}")
+                    st.error(f"Error type: {type(e).__name__}")
+                    import traceback
+                    st.code(traceback.format_exc())
+                    return
             else:
-                st.error("❌ Data processing failed")
+                st.info("ℹ️ No dataset loaded. Please download chunks or generate sample data.")
                 return
-        else:
-            st.info("ℹ️ No dataset loaded. Please download chunks or generate sample data.")
+                
+        except Exception as e:
+            st.error(f"❌ Data loading error: {str(e)}")
+            st.error(f"Error type: {type(e).__name__}")
+            import traceback
+            st.code(traceback.format_exc())
             return
     
     # Use data from session state
@@ -685,8 +723,13 @@ def main():
         df_processed = st.session_state["df_processed"]
         
         # Apply smart filters for performance
-        from components.smart_filters import apply_smart_filters, show_filter_summary
-        df_filtered = apply_smart_filters(df_processed)
+        try:
+            from components.smart_filters import apply_smart_filters, show_filter_summary
+            df_filtered = apply_smart_filters(df_processed)
+        except Exception as e:
+            st.error(f"❌ Smart filters error: {str(e)}")
+            st.warning("Using unfiltered data")
+            df_filtered = df_processed
         
         # Update filtered data in session state
         st.session_state["df_filtered"] = df_filtered
@@ -708,34 +751,47 @@ def main():
         
         with tab1:
             # FraudSight Overview Tab
-            from components.fraudsight_overview import display_fraudsight_overview
-            
-            # Show loading spinner while generating overview
-            with st.spinner("📊 Loading executive dashboard..."):
-                display_fraudsight_overview(df_filtered)
+            try:
+                from components.fraudsight_overview import display_fraudsight_overview
+                
+                # Show loading spinner while generating overview
+                with st.spinner("📊 Loading executive dashboard..."):
+                    display_fraudsight_overview(df_filtered)
+            except Exception as e:
+                st.error(f"❌ Overview tab error: {str(e)}")
+                st.info("Please try refreshing the page or check the data format.")
         
         with tab2:
             # FraudSight Analytics Tab
-            from components.fraudsight_analytics import display_fraudsight_analytics, display_ai_recommendations_panel
-            
-            # Show loading spinner while generating analytics
-            with st.spinner("📈 Loading advanced analytics..."):
-                # Main analytics content
-                col_main, col_sidebar = st.columns([3, 1])
+            try:
+                from components.fraudsight_analytics import display_fraudsight_analytics, display_ai_recommendations_panel
                 
-                with col_main:
-                    display_fraudsight_analytics(df_filtered)
-                
-                with col_sidebar:
-                    display_ai_recommendations_panel(df_filtered)
+                # Show loading spinner while generating analytics
+                with st.spinner("📈 Loading advanced analytics..."):
+                    # Main analytics content
+                    col_main, col_sidebar = st.columns([3, 1])
+                    
+                    with col_main:
+                        display_fraudsight_analytics(df_filtered)
+                    
+                    with col_sidebar:
+                        display_ai_recommendations_panel(df_filtered)
+                        
+            except Exception as e:
+                st.error(f"❌ Analytics tab error: {str(e)}")
+                st.info("Please try refreshing the page or check the data format.")
         
         with tab3:
             # Enhanced Ask AI Tab
-            st.markdown("### 🧠 Ask AI ")
-            
-            # Show loading spinner while initializing AI
-            with st.spinner("🤖 Initializing AI assistant..."):
-                display_ai_copilot(df_filtered)
+            try:
+                st.markdown("### 🧠 Ask AI ")
+                
+                # Show loading spinner while initializing AI
+                with st.spinner("🤖 Initializing AI assistant..."):
+                    display_ai_copilot(df_filtered)
+            except Exception as e:
+                st.error(f"❌ AI tab error: {str(e)}")
+                st.info("AI features may be temporarily unavailable.")
     
     else:
         # Welcome screen for user's dataset
