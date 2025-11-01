@@ -170,9 +170,16 @@ def display_fraudsight_overview(df: pd.DataFrame):
     with col_right:
         st.markdown("### 🏷️ Merchant Category Breakdown")
         
-        if 'category' in df.columns:
+        # Check for merchant category column (try multiple possible names)
+        category_col = None
+        for col in ['merchant_category', 'category', 'merchant_type', 'business_category']:
+            if col in df.columns:
+                category_col = col
+                break
+        
+        if category_col:
             # Fast category analysis
-            category_stats = df.groupby('category', observed=True).agg({
+            category_stats = df.groupby(category_col, observed=True).agg({
                 'is_fraud': ['sum', 'count'],
                 'amount': 'sum'
             }).reset_index()
@@ -198,6 +205,9 @@ def display_fraudsight_overview(df: pd.DataFrame):
             )
             
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("📊 Merchant category data not available in current dataset")
+            st.write(f"Available columns: {', '.join(df.columns[:10])}...")
     
     # Fraud Alert Ticker
     st.markdown("---")
