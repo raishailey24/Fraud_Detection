@@ -37,26 +37,22 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
     
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔍 Smart Filters")
-    
-    # Data limit selector
-    st.sidebar.markdown("**⚡ Performance Settings**")
-    
-    # Determine available data limits based on dataset size
-    dataset_size = len(df)
-    limit_options = []
-    limit_labels = []
-    
-    # Data limit options - exactly 5 options as requested
-    limit_options = [100000, 500000, 1000000, 5000000, dataset_size]
-    limit_labels = [
-        "100K records",
-        "500K records", 
-        "1M records",
-        "5M records",
-        f"13M records (All Data - {_format_number(dataset_size)})"
-    ]
+    try:
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🔍 Smart Filters")
+        dataset_size = len(df)
+        limit_options = []
+        limit_labels = []
+        
+        # Data limit options - exactly 5 options as requested
+        limit_options = [100000, 500000, 1000000, 5000000, dataset_size]
+        limit_labels = [
+            "100K records",
+            "500K records", 
+            "1M records",
+            "5M records",
+            f"13M records (All Data - {_format_number(dataset_size)})"
+        ]
     
     # Filter options to only show relevant limits
     valid_options = []
@@ -66,15 +62,34 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
             valid_options.append(limit)
             valid_labels.append(label)
     
-    # Default to 1M records as requested
-    default_index = 2  # 1M records (third option: 100K, 500K, 1M, 5M, 13M)
+    # Ensure we have at least one option
+    if not valid_options:
+        valid_options = [dataset_size]
+        valid_labels = [f"All {dataset_size:,} records"]
+    
+    # Default to 1M records if available, otherwise use the largest available option
+    default_index = 0  # Start with first option as fallback
+    
+    # Try to find 1M records option
+    for i, limit in enumerate(valid_options):
+        if limit == 1000000:  # 1M records
+            default_index = i
+            break
+    
+    # If no 1M option, use the largest available (last in list)
+    if default_index == 0 and len(valid_options) > 1:
+        default_index = len(valid_options) - 1
+    
+    # Ensure index is within bounds
+    if default_index >= len(valid_options):
+        default_index = len(valid_options) - 1
     
     selected_limit = st.sidebar.selectbox(
         "📊 Data Limit",
         options=valid_options,
-        format_func=lambda x: valid_labels[valid_options.index(x)],
-        index=default_index,
-        help="Choose how many records to analyze - defaults to 1M records",
+        format_func=lambda x: valid_labels[valid_options.index(x)] if valid_options else "No data",
+        index=default_index if valid_options else 0,
+        help="Choose how many records to analyze - defaults to 1M records or largest available",
         key="data_limit_selector"
     )
     
@@ -243,4 +258,11 @@ def show_filter_summary(original_df: pd.DataFrame, filtered_df: pd.DataFrame):
             help="Percentage of data filtered out"
         )
     
-    # Fraud rate display removed per user request
+        # Fraud rate display removed per user request
+        
+        return filtered_df
+        
+    except Exception as e:
+        st.sidebar.error(f"❌ Filter error: {str(e)}")
+        st.sidebar.info("Using original dataset without filters")
+        return df
