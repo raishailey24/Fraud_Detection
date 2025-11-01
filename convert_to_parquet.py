@@ -199,8 +199,8 @@ if __name__ == "__main__":
     
     # Use the complete_user_transactions.csv file
     csv_file = "data/complete_user_transactions.csv"
-    output_dir = "data/converted"
-    max_size = 100
+    output_dir = "data/github_chunks"
+    max_size = 25  # Smaller chunks for GitHub (25MB limit per file)
     
     print(f"Input file: {csv_file}")
     print(f"Output directory: {output_dir}")

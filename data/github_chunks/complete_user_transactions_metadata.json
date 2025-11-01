@@ -1,0 +1,23 @@
+{
+  "original_csv": "data\\complete_user_transactions.csv",
+  "total_rows": 12635227,
+  "total_chunks": 15,
+  "chunk_files": [
+    "complete_user_transactions_chunk_00.parquet",
+    "complete_user_transactions_chunk_01.parquet",
+    "complete_user_transactions_chunk_02.parquet",
+    "complete_user_transactions_chunk_03.parquet",
+    "complete_user_transactions_chunk_04.parquet",
+    "complete_user_transactions_chunk_05.parquet",
+    "complete_user_transactions_chunk_06.parquet",
+    "complete_user_transactions_chunk_07.parquet",
+    "complete_user_transactions_chunk_08.parquet",
+    "complete_user_transactions_chunk_09.parquet",
+    "complete_user_transactions_chunk_10.parquet",
+    "complete_user_transactions_chunk_11.parquet",
+    "complete_user_transactions_chunk_12.parquet",
+    "complete_user_transactions_chunk_13.parquet",
+    "complete_user_transactions_chunk_14.parquet"
+  ],
+  "compression_ratio": "87.5%"
+}

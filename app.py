@@ -84,6 +84,96 @@ def load_dataset_file(file_path: str):
     except Exception as e:
         raise Exception(f"Error loading dataset: {str(e)}")
 
+def get_github_datasets():
+    """
+    Define GitHub raw URLs for parquet datasets.
+    These will be automatically generated based on the chunks created.
+    """
+    base_url = "https://raw.githubusercontent.com/raishailey24/Fraud_Detection/main/data/github_chunks"
+    
+    # This will be populated based on the actual chunks created
+    chunks = {}
+    
+    # Estimate ~15 chunks of 25MB each for the 372MB total parquet data
+    estimated_chunks = 15
+    
+    for i in range(estimated_chunks):
+        chunk_filename = f"complete_user_transactions_chunk_{i:02d}.parquet"
+        chunks[chunk_filename] = {
+            "url": f"{base_url}/{chunk_filename}",
+            "description": f"Complete Transactions - Chunk {i+1}/{estimated_chunks}",
+            "size_mb": 25,
+            "is_chunked": True,
+            "chunk_index": i,
+            "total_chunks": estimated_chunks,
+            "base_name": "complete_user_transactions"
+        }
+    
+    return chunks
+
+def download_from_github(url: str, filename: str, description: str = "dataset") -> Path:
+    """
+    Download parquet dataset from GitHub raw URL.
+    """
+    data_dir = Path("data")
+    data_dir.mkdir(exist_ok=True)
+    file_path = data_dir / filename
+    
+    # Check if file already exists and is not empty
+    if file_path.exists() and file_path.stat().st_size > 1024:  # At least 1KB
+        file_size_mb = file_path.stat().st_size / (1024 * 1024)
+        st.success(f"✅ {description} already available ({file_size_mb:.1f}MB)")
+        return file_path
+    
+    try:
+        st.info(f"📥 Downloading {description} from GitHub...")
+        
+        import requests
+        response = requests.get(url, stream=True, timeout=60)
+        response.raise_for_status()
+        
+        total_size = int(response.headers.get('content-length', 0))
+        
+        # Create progress display
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        downloaded = 0
+        chunk_size = 8192
+        
+        with open(file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    
+                    if total_size > 0:
+                        progress = downloaded / total_size
+                        progress_bar.progress(min(progress, 1.0))
+                        
+                        downloaded_mb = downloaded / (1024 * 1024)
+                        total_mb = total_size / (1024 * 1024)
+                        status_text.markdown(f"**📊 Progress:** {downloaded_mb:.1f}MB / {total_mb:.1f}MB ({progress*100:.1f}%)")
+        
+        # Verify download
+        final_size_mb = downloaded / (1024 * 1024)
+        if downloaded < 1024:
+            st.error(f"❌ Download failed: File too small ({downloaded} bytes)")
+            if file_path.exists():
+                file_path.unlink()
+            return None
+        
+        progress_bar.progress(1.0)
+        status_text.markdown(f"**✅ Download Complete!** {final_size_mb:.1f}MB")
+        
+        return file_path
+        
+    except Exception as e:
+        st.error(f"❌ Download failed: {str(e)}")
+        if file_path.exists():
+            file_path.unlink()
+        return None
+
 def get_google_drive_datasets():
     """
     Define Google Drive file IDs for parquet datasets.
@@ -361,18 +451,19 @@ def load_full_dataset():
     # Get available datasets
     available_files, data_dir = get_available_datasets()
     
-    # Google Drive Parquet Datasets
+    # GitHub Parquet Datasets
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### Google Drive Datasets")
+    st.sidebar.markdown("### GitHub Datasets")
     st.sidebar.info(" Parquet Format: Faster loading, smaller files, better compression")
+    st.sidebar.info(" GitHub Hosting: Reliable downloads, no authentication needed")
     
-    google_datasets = get_google_drive_datasets()
+    github_datasets = get_github_datasets()
     
     # Check for chunked datasets
     chunked_datasets = {}
     single_datasets = {}
     
-    for filename, info in google_datasets.items():
+    for filename, info in github_datasets.items():
         if info.get('is_chunked', False):
             base_name = info.get('base_name', filename.split('_chunk_')[0])
             if base_name not in chunked_datasets:
@@ -381,21 +472,18 @@ def load_full_dataset():
         else:
             single_datasets[filename] = info
     
-    # Display single parquet files
+    # Display single parquet files (GitHub doesn't typically have single files, all are chunked)
     for filename, info in single_datasets.items():
         file_path = data_dir / filename
         if file_path.exists():
             size_mb = file_path.stat().st_size / (1024 * 1024)
-            st.sidebar.success(f" {info['description']} ({size_mb:.1f}MB)")
+            st.sidebar.success(f"✅ {info['description']} ({size_mb:.1f}MB)")
         else:
-            if info['file_id'] != "YOUR_PARQUET_FILE_ID_HERE":
-                if st.sidebar.button(f" Download {info['description']}", key=f"gd_{filename}"):
-                    result = download_from_google_drive(info["file_id"], filename, info["description"])
-                    if result:
-                        st.success(" Download completed!")
-                        st.rerun()
-            else:
-                st.sidebar.warning(" Please update Google Drive file ID")
+            if st.sidebar.button(f"📥 Download {info['description']}", key=f"gh_{filename}"):
+                result = download_from_github(info["url"], filename, info["description"])
+                if result:
+                    st.success("✅ Download completed!")
+                    st.rerun()
     
     # Display chunked datasets
     for base_name, chunks in chunked_datasets.items():
@@ -422,13 +510,10 @@ def load_full_dataset():
                     st.success(f"✅ Chunk {chunk_num}/{total_chunks} ({size_mb:.1f}MB)")
                 else:
                     all_downloaded = False
-                    if info['file_id'].startswith("YOUR_CHUNK_"):
-                        st.warning(f"⚠️ Update file ID for chunk {chunk_num}")
-                    else:
-                        if st.button(f"📥 Download Chunk {chunk_num}/{total_chunks}", key=f"chunk_{filename}"):
-                            result = download_from_google_drive(info["file_id"], filename, info["description"])
-                            if result:
-                                st.rerun()
+                    if st.button(f"📥 Download Chunk {chunk_num}/{total_chunks}", key=f"chunk_{filename}"):
+                        result = download_from_github(info["url"], filename, info["description"])
+                        if result:
+                            st.rerun()
             
             # Show merge button when all chunks are downloaded
             if all_downloaded and len([f for f in chunk_files if f.exists()]) == total_chunks:
@@ -438,29 +523,27 @@ def load_full_dataset():
                     if merged_df is not None:
                         return merged_df
     
-    # Instructions for setting up Google Drive
-    with st.sidebar.expander("📋 Setup Instructions"):
+    # Instructions for GitHub hosting
+    with st.sidebar.expander("📋 GitHub Hosting Info"):
         st.markdown("""
         **✅ Step 1: Convert CSV to Parquet** (COMPLETED)
-        - Original: 2.8GB CSV → 4 chunks (~89MB each)
-        - Files created in `/data/converted/`
+        - Original: 2.8GB CSV → 15 chunks (~24MB each)
+        - Files created in `/data/github_chunks/`
         
-        **Step 2: Upload to Google Drive**
-        1. Upload all 4 parquet chunk files to Google Drive
-        2. Set sharing: "Anyone with the link can view"
-        3. Copy file IDs from Google Drive URLs
-        
-        **Step 3: Update File IDs**
-        Replace the placeholder IDs in the code:
-        - `YOUR_CHUNK_0_FILE_ID_HERE`
-        - `YOUR_CHUNK_1_FILE_ID_HERE`
-        - `YOUR_CHUNK_2_FILE_ID_HERE`
-        - `YOUR_CHUNK_3_FILE_ID_HERE`
+        **✅ Step 2: GitHub Hosting** (READY)
+        - All chunks under 25MB (GitHub file limit)
+        - Direct raw URL downloads
+        - No authentication required
+        - Reliable CDN delivery
         
         **Benefits Achieved:**
         - 🚀 87.5% size reduction (2.8GB → 372MB)
-        - 📦 4 chunks under 100MB each
+        - 📦 15 chunks under 25MB each
         - ⚡ Optimized parquet format
+        - 🌐 GitHub CDN hosting
+        - 🔒 No authentication needed
+        
+        **Next Step:** Upload chunks to GitHub repository
         """)
     
     st.sidebar.markdown("---")
