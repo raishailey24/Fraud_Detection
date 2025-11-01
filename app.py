@@ -497,12 +497,28 @@ def load_full_dataset():
         # Check if all chunks are downloaded
         chunk_files = []
         all_downloaded = True
+        downloaded_files = []
+        missing_files = []
         
         for filename, info in sorted(chunks, key=lambda x: x[1].get('chunk_index', 0)):
             file_path = data_dir / filename
             chunk_files.append(file_path)
-            if not file_path.exists():
+            if file_path.exists() and file_path.stat().st_size > 1024:  # At least 1KB
+                downloaded_files.append(filename)
+            else:
                 all_downloaded = False
+                missing_files.append(filename)
+        
+        # Debug info
+        if downloaded_files:
+            st.sidebar.info(f"📥 Downloaded: {len(downloaded_files)}/{total_chunks} chunks")
+        if missing_files:
+            st.sidebar.warning(f"⚠️ Missing: {len(missing_files)} chunks")
+        
+        # Add manual refresh button if some files are downloaded
+        if downloaded_files and not all_downloaded:
+            if st.sidebar.button("🔄 Refresh Status", help="Check for newly downloaded files"):
+                st.rerun()
         
         if all_downloaded:
             # All chunks ready - show load button
@@ -577,10 +593,46 @@ def load_full_dataset():
                 status_text.text("✅ All chunks downloaded!")
                 
                 if success_count == total_chunks:
-                    st.success("🎉 Dataset ready! Loading dashboard...")
+                    st.success("🎉 All chunks downloaded successfully!")
+                    st.info("🔄 Refreshing page to show load button...")
+                    # Add a small delay to ensure files are written
+                    import time
+                    time.sleep(1)
                     st.rerun()
                 else:
                     st.error(f"❌ Download incomplete: {success_count}/{total_chunks} chunks")
+                    st.info("Please try downloading again.")
+    
+    # Debug section
+    with st.sidebar.expander("🔍 Debug Info"):
+        st.markdown("**File Status:**")
+        data_dir = Path("data")
+        if data_dir.exists():
+            parquet_files = list(data_dir.glob("*.parquet"))
+            st.write(f"Found {len(parquet_files)} parquet files in data/")
+            for f in parquet_files[:5]:  # Show first 5
+                size_mb = f.stat().st_size / (1024*1024)
+                st.write(f"- {f.name}: {size_mb:.1f}MB")
+            if len(parquet_files) > 5:
+                st.write(f"... and {len(parquet_files)-5} more")
+        else:
+            st.write("Data directory not found")
+        
+        # Force load button for testing
+        if st.button("🚀 Force Load Dashboard", help="Try to load dashboard regardless of file status"):
+            # Try to find any parquet files and load them
+            data_dir = Path("data")
+            parquet_files = list(data_dir.glob("*.parquet"))
+            if parquet_files:
+                st.info(f"Found {len(parquet_files)} parquet files, attempting to load...")
+                try:
+                    merged_df = merge_parquet_chunks(parquet_files)
+                    if merged_df is not None:
+                        return merged_df
+                except Exception as e:
+                    st.error(f"Force load failed: {e}")
+            else:
+                st.error("No parquet files found to load")
     
     # Clean info section
     with st.sidebar.expander("ℹ️ Dataset Info"):
