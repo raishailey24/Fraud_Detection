@@ -338,21 +338,39 @@ def merge_parquet_chunks(chunk_files: list) -> pd.DataFrame:
     Merge multiple parquet chunks into a single DataFrame.
     """
     if not chunk_files:
+        st.error("❌ No chunk files provided")
         return None
     
     st.info(f"🔗 Merging {len(chunk_files)} parquet chunks...")
     progress_bar = st.progress(0)
+    status_text = st.empty()
     
     dfs = []
     for i, chunk_file in enumerate(chunk_files):
         if chunk_file.exists():
-            chunk_df = pd.read_parquet(chunk_file)
-            dfs.append(chunk_df)
-            progress_bar.progress((i + 1) / len(chunk_files))
+            try:
+                chunk_df = pd.read_parquet(chunk_file)
+                dfs.append(chunk_df)
+                status_text.text(f"Loaded chunk {i+1}/{len(chunk_files)}: {len(chunk_df):,} records")
+                progress_bar.progress((i + 1) / len(chunk_files))
+            except Exception as e:
+                st.error(f"❌ Error reading chunk {i+1}: {str(e)}")
+                return None
+        else:
+            st.error(f"❌ Chunk file not found: {chunk_file}")
+            return None
     
     if dfs:
+        st.info("🔗 Combining all chunks...")
         merged_df = pd.concat(dfs, ignore_index=True)
-        st.success(f"✅ Merged {len(chunk_files)} chunks: {len(merged_df):,} total records")
+        
+        # Show column info
+        st.info(f"📊 Merged dataset: {len(merged_df):,} records, {len(merged_df.columns)} columns")
+        st.info(f"📋 Columns: {', '.join(merged_df.columns[:10])}{'...' if len(merged_df.columns) > 10 else ''}")
+        
+        progress_bar.progress(1.0)
+        status_text.text("✅ Merge completed successfully!")
+        
         return merged_df
     else:
         st.error("❌ No valid chunk files found")
@@ -521,6 +539,14 @@ def load_full_dataset():
                 if st.button(f"🔗 Load Complete Dataset (12.6M records)", key=f"merge_{base_name}", type="primary"):
                     merged_df = merge_parquet_chunks(chunk_files)
                     if merged_df is not None:
+                        # Auto-rename columns if needed
+                        try:
+                            from utils.data_loader import DataLoader
+                            merged_df = DataLoader.auto_rename_columns(merged_df)
+                            st.success(f"✅ Dataset loaded: {len(merged_df):,} records, {len(merged_df.columns)} columns")
+                        except Exception as e:
+                            st.warning(f"Column renaming failed: {e}")
+                        
                         return merged_df
     
     # Instructions for GitHub hosting
@@ -710,19 +736,31 @@ def main():
     
     # Load data only if not already loaded
     if not st.session_state.get("data_loaded", False):
-        df = load_data_section()
+        with st.spinner("Loading dataset..."):
+            df = load_data_section()
         
         if df is not None:
+            st.success(f"✅ Raw data loaded: {len(df):,} records")
+            
             # Process data
-            df_processed = process_data(df)
+            with st.spinner("Processing data..."):
+                df_processed = process_data(df)
             
             if df_processed is not None:
+                st.success(f"✅ Data processed: {len(df_processed):,} records")
+                
                 # Store in session state
                 st.session_state["df_raw"] = df
                 st.session_state["df_processed"] = df_processed
                 st.session_state["data_loaded"] = True
+                
+                st.success("🎉 Dataset ready! Refreshing interface...")
                 st.rerun()  # Rerun once to load the interface
+            else:
+                st.error("❌ Data processing failed")
+                return
         else:
+            st.info("ℹ️ No dataset loaded. Please download chunks or generate sample data.")
             return
     
     # Use data from session state
