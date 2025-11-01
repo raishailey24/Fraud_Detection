@@ -121,23 +121,14 @@ def download_from_github(url: str, filename: str, description: str = "dataset") 
     
     # Check if file already exists and is not empty
     if file_path.exists() and file_path.stat().st_size > 1024:  # At least 1KB
-        file_size_mb = file_path.stat().st_size / (1024 * 1024)
-        st.success(f"✅ {description} already available ({file_size_mb:.1f}MB)")
         return file_path
     
     try:
-        st.info(f"📥 Downloading {description} from GitHub...")
-        
         import requests
         response = requests.get(url, stream=True, timeout=60)
         response.raise_for_status()
         
         total_size = int(response.headers.get('content-length', 0))
-        
-        # Create progress display
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
         downloaded = 0
         chunk_size = 8192
         
@@ -146,30 +137,16 @@ def download_from_github(url: str, filename: str, description: str = "dataset") 
                 if chunk:
                     f.write(chunk)
                     downloaded += len(chunk)
-                    
-                    if total_size > 0:
-                        progress = downloaded / total_size
-                        progress_bar.progress(min(progress, 1.0))
-                        
-                        downloaded_mb = downloaded / (1024 * 1024)
-                        total_mb = total_size / (1024 * 1024)
-                        status_text.markdown(f"**📊 Progress:** {downloaded_mb:.1f}MB / {total_mb:.1f}MB ({progress*100:.1f}%)")
         
         # Verify download
-        final_size_mb = downloaded / (1024 * 1024)
         if downloaded < 1024:
-            st.error(f"❌ Download failed: File too small ({downloaded} bytes)")
             if file_path.exists():
                 file_path.unlink()
             return None
         
-        progress_bar.progress(1.0)
-        status_text.markdown(f"**✅ Download Complete!** {final_size_mb:.1f}MB")
-        
         return file_path
         
     except Exception as e:
-        st.error(f"❌ Download failed: {str(e)}")
         if file_path.exists():
             file_path.unlink()
         return None
@@ -503,161 +480,101 @@ def load_full_dataset():
                     st.success("✅ Download completed!")
                     st.rerun()
     
-    # Display chunked datasets
+    # Single download button for all chunks
     for base_name, chunks in chunked_datasets.items():
         total_chunks = chunks[0][1].get('total_chunks', len(chunks))
         downloaded_count = sum(1 for filename, _ in chunks if (data_dir / filename).exists())
         
-        with st.sidebar.expander(f"📦 {base_name.replace('_', ' ').title()} ({downloaded_count}/{total_chunks} chunks)"):
-            all_downloaded = True
-            chunk_files = []
-            
-            # Show overall progress
-            if downloaded_count > 0:
-                progress = downloaded_count / total_chunks
-                st.progress(progress)
-                st.caption(f"Progress: {downloaded_count}/{total_chunks} chunks downloaded")
-            
-            for filename, info in sorted(chunks, key=lambda x: x[1].get('chunk_index', 0)):
-                file_path = data_dir / filename
-                chunk_files.append(file_path)
-                chunk_num = info.get('chunk_index', 0) + 1
-                
-                if file_path.exists():
-                    size_mb = file_path.stat().st_size / (1024 * 1024)
-                    st.success(f"✅ Chunk {chunk_num}/{total_chunks} ({size_mb:.1f}MB)")
-                else:
-                    all_downloaded = False
-                    if st.button(f"📥 Download Chunk {chunk_num}/{total_chunks}", key=f"chunk_{filename}"):
-                        result = download_from_github(info["url"], filename, info["description"])
-                        if result:
-                            st.rerun()
-            
-            # Show merge button when all chunks are downloaded
-            if all_downloaded and len([f for f in chunk_files if f.exists()]) == total_chunks:
-                st.success(f"🎉 All {total_chunks} chunks ready!")
-                if st.button(f"🔗 Load Complete Dataset (12.6M records)", key=f"merge_{base_name}", type="primary"):
+        st.sidebar.markdown(f"### 📊 Complete Dataset")
+        st.sidebar.info(f"12.6M transaction records • 21 columns • 372MB total")
+        
+        # Show progress if downloading
+        if downloaded_count > 0 and downloaded_count < total_chunks:
+            progress = downloaded_count / total_chunks
+            st.sidebar.progress(progress)
+            st.sidebar.caption(f"Downloading: {downloaded_count}/{total_chunks} chunks ({progress*100:.0f}%)")
+        
+        # Check if all chunks are downloaded
+        chunk_files = []
+        all_downloaded = True
+        
+        for filename, info in sorted(chunks, key=lambda x: x[1].get('chunk_index', 0)):
+            file_path = data_dir / filename
+            chunk_files.append(file_path)
+            if not file_path.exists():
+                all_downloaded = False
+        
+        if all_downloaded:
+            # All chunks ready - show load button
+            st.sidebar.success("✅ All data chunks ready!")
+            if st.sidebar.button("🚀 Load Fraud Detection Dashboard", type="primary", use_container_width=True):
+                with st.spinner("Loading complete dataset..."):
                     merged_df = merge_parquet_chunks(chunk_files)
                     if merged_df is not None:
                         # Auto-rename columns if needed
                         try:
                             from utils.data_loader import DataLoader
                             merged_df = DataLoader.auto_rename_columns(merged_df)
-                            st.success(f"✅ Dataset loaded: {len(merged_df):,} records, {len(merged_df.columns)} columns")
+                            st.success(f"✅ Dataset loaded: {len(merged_df):,} records")
                         except Exception as e:
                             st.warning(f"Column renaming failed: {e}")
                         
                         return merged_df
+        else:
+            # Show single download button for all chunks
+            if st.sidebar.button("📥 Download Complete Dataset", type="primary", use_container_width=True):
+                # Create progress display
+                progress_container = st.container()
+                with progress_container:
+                    st.info("🚀 Downloading fraud detection dataset...")
+                    overall_progress = st.progress(0)
+                    status_text = st.empty()
+                
+                # Download all chunks sequentially
+                success_count = 0
+                for i, (filename, info) in enumerate(sorted(chunks, key=lambda x: x[1].get('chunk_index', 0))):
+                    file_path = data_dir / filename
+                    
+                    # Update progress
+                    progress = i / total_chunks
+                    overall_progress.progress(progress)
+                    status_text.text(f"Downloading chunk {i+1}/{total_chunks}...")
+                    
+                    if not file_path.exists():
+                        result = download_from_github(info["url"], filename, info["description"])
+                        if result:
+                            success_count += 1
+                        else:
+                            st.error(f"❌ Failed to download chunk {i+1}")
+                            return
+                    else:
+                        success_count += 1
+                
+                # Complete progress
+                overall_progress.progress(1.0)
+                status_text.text("✅ All chunks downloaded!")
+                
+                if success_count == total_chunks:
+                    st.success("🎉 Dataset ready! Loading dashboard...")
+                    st.rerun()
+                else:
+                    st.error(f"❌ Download incomplete: {success_count}/{total_chunks} chunks")
     
-    # Instructions for GitHub hosting
-    with st.sidebar.expander("📋 GitHub Hosting Info"):
+    # Clean info section
+    with st.sidebar.expander("ℹ️ Dataset Info"):
         st.markdown("""
-        **✅ Step 1: Convert CSV to Parquet** (COMPLETED)
-        - Original: 2.8GB CSV → 15 chunks (~24MB each)
-        - Files created in `/data/github_chunks/`
-        
-        **✅ Step 2: GitHub Hosting** (READY)
-        - All chunks under 25MB (GitHub file limit)
-        - Direct raw URL downloads
-        - No authentication required
-        - Reliable CDN delivery
-        
-        **Benefits Achieved:**
-        - 🚀 87.5% size reduction (2.8GB → 372MB)
-        - 📦 15 chunks under 25MB each
+        **Complete Transaction Dataset**
+        - 📊 12.6M transaction records
+        - 📋 21 data columns
+        - 💾 372MB total size (87.5% compressed)
         - ⚡ Optimized parquet format
         - 🌐 GitHub CDN hosting
-        - 🔒 No authentication needed
-        
-        **Next Step:** Upload chunks to GitHub repository
         """)
     
-    st.sidebar.markdown("---")
     
-    # Check for existing local files as fallback
-    if available_files:
-        # Load local parquet or CSV files
-        selected_file = st.sidebar.selectbox(
-            "📊 Local Files",
-            options=[f[0] for f in available_files],
-            format_func=lambda x: next(f[1] for f in available_files if f[0] == x),
-            help="Local files found in data directory"
-        )
-        
-        file_path = data_dir / selected_file
-        try:
-            if selected_file.endswith('.parquet'):
-                df = pd.read_parquet(file_path)
-            else:
-                df = load_dataset_file(str(file_path))
-            
-            # Auto-rename columns if needed
-            from utils.data_loader import DataLoader
-            df = DataLoader.auto_rename_columns(df)
-            
-            file_size_mb = file_path.stat().st_size / (1024*1024)
-            st.sidebar.success(f"✅ Loaded: {len(df):,} records ({file_size_mb:.1f}MB)")
-            return df
-            
-        except Exception as e:
-            st.sidebar.error(f"❌ Error loading {selected_file}: {str(e)}")
-    
-    # No data available - show sample data generation
-    st.warning("⚠️ No transaction data available")
-    st.info("Convert your CSV to parquet format and upload to Google Drive, or generate sample data.")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🎯 Generate Sample Data (50K records)", type="primary"):
-            try:
-                sample_file = generate_cloud_sample_data()
-                st.success("✅ Sample data generated successfully!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Sample data generation failed: {str(e)}")
-    
-    with col2:
-        if st.button("📊 Generate Large Sample (100K records)"):
-            try:
-                    # Generate larger sample for better demo
-                    import numpy as np
-                    np.random.seed(42)
-                    
-                    data_dir = Path("data")
-                    data_dir.mkdir(exist_ok=True)
-                    
-                    st.info("🔄 Generating large sample dataset...")
-                    progress_bar = st.progress(0)
-                    
-                    n_transactions = 100000
-                    
-                    # Quick generation for large dataset
-                    data = {
-                        'transaction_id': [f'TXN{str(i).zfill(8)}' for i in range(1, n_transactions + 1)],
-                        'timestamp': pd.date_range('2023-01-01', periods=n_transactions, freq='15min'),
-                        'amount': np.random.lognormal(3, 1.5, n_transactions).round(2),
-                        'user_id': [f'USER{np.random.randint(1000, 9999)}' for _ in range(n_transactions)],
-                        'merchant': np.random.choice(['Amazon', 'Walmart', 'Target', 'Starbucks', 'McDonalds', 'Shell', 'Exxon', 'Best Buy', 'Home Depot', 'CVS'], n_transactions),
-                        'location': np.random.choice(['New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX', 'Phoenix, AZ', 'International', 'Online'], n_transactions),
-                        'category': np.random.choice(['retail', 'restaurant', 'gas', 'grocery', 'entertainment', 'healthcare', 'transportation'], n_transactions),
-                        'is_fraud': np.random.choice([0, 1], n_transactions, p=[0.98, 0.02])
-                    }
-                    
-                    progress_bar.progress(0.5)
-                    
-                    df = pd.DataFrame(data)
-                    sample_file = data_dir / "sample_transactions.csv"
-                    df.to_csv(sample_file, index=False)
-                    
-                    progress_bar.progress(1.0)
-                    
-                    file_size_mb = sample_file.stat().st_size / (1024 * 1024)
-                    st.success(f"✅ Generated {len(df):,} transactions ({file_size_mb:.1f}MB)")
-                    st.rerun()
-                    
-            except Exception as e:
-                st.error(f"Large sample generation failed: {str(e)}")
-    
+    # No data available - clean message
+    st.info("📥 **Ready to load your fraud detection dataset**")
+    st.markdown("Click **'Download Complete Dataset'** in the sidebar to get started.")
     return None
 
 
