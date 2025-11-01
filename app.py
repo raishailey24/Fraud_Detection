@@ -283,29 +283,184 @@ def download_from_google_drive(file_id: str, filename: str, description: str = "
         st.error(f"❌ Download failed: {str(e)}")
         
         if is_cloud:
-            st.error("🌐 **Cloud Deployment Issue Detected**")
-            st.info("""
-            **Possible solutions:**
-            1. **Google Drive permissions**: Ensure file is 'Public' with 'Anyone with link can view'
-            2. **File size**: 2.3GB files may timeout on cloud platforms
-            3. **Alternative**: Use sample data for demo, full data for local development
-            """)
-            
-            # Offer to generate sample data instead
-            if st.button("🔄 Generate Sample Data Instead", key="fallback_sample"):
-                try:
-                    from streamlit_cloud_setup import ensure_sample_data
-                    ensure_sample_data()
-                    st.success("✅ Sample data generated successfully!")
-                    st.rerun()
-                except Exception as sample_error:
-                    st.error(f"Sample data generation failed: {sample_error}")
-        else:
-            st.info("💡 Please ensure the Google Drive file is shared as 'Anyone with the link can view'")
-        
         if file_path.exists():
             file_path.unlink()
         return None
+        
+    # Show completion status
+    progress_bar.progress(1.0)
+    status_text.markdown(f"**✅ Download Complete!** {final_size_mb:.1f}MB")
+    speed_text.markdown("**🎉 Success!** File downloaded successfully")
+    eta_text.markdown("**📁 Ready for analysis**")
+    
+    # Add a brief pause to show completion
+    time.sleep(2)
+    
+    return file_path
+        
+except Exception as e:
+    st.error(f"❌ Download failed: {str(e)}")
+    
+    if is_cloud:
+        st.error("🌐 **Cloud Deployment Issue Detected**")
+        st.info("""
+        **Possible solutions:**
+        1. **Google Drive permissions**: Ensure file is 'Public' with 'Anyone with link can view'
+        2. **File size**: 2.3GB files may timeout on cloud platforms
+        3. **Alternative**: Use sample data for demo, full data for local development
+        """)
+        
+        # Offer to generate sample data instead
+        if st.button("🔄 Generate Sample Data Instead", key="fallback_sample"):
+            try:
+                generate_cloud_sample_data()
+                st.success("✅ Sample data generated successfully!")
+                st.rerun()
+            except Exception as sample_error:
+                st.error(f"Sample data generation failed: {sample_error}")
+    else:
+        st.info("💡 Please ensure the Google Drive file is shared as 'Anyone with the link can view'")
+        
+        # No data available - show sample data generation
+        st.warning("⚠️ No transaction data available")
+        st.info("Generate sample data to explore the fraud detection dashboard features.")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🎯 Generate Sample Data (50K records)", type="primary"):
+                try:
+                    sample_file = generate_cloud_sample_data()
+                    st.success("✅ Sample data generated successfully!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Sample data generation failed: {str(e)}")
+        
+        with col2:
+            if st.button("📊 Generate Large Sample (100K records)"):
+                try:
+                    # Generate larger sample for better demo
+                    import numpy as np
+                    np.random.seed(42)
+                    
+                    data_dir = Path("data")
+                    data_dir.mkdir(exist_ok=True)
+                    
+                    st.info("🔄 Generating large sample dataset...")
+                    progress_bar = st.progress(0)
+                    
+                    n_transactions = 100000
+                    
+                    # Quick generation for large dataset
+                    data = {
+                        'transaction_id': [f'TXN{str(i).zfill(8)}' for i in range(1, n_transactions + 1)],
+                        'timestamp': pd.date_range('2023-01-01', periods=n_transactions, freq='15min'),
+                        'amount': np.random.lognormal(3, 1.5, n_transactions).round(2),
+                        'user_id': [f'USER{np.random.randint(1000, 9999)}' for _ in range(n_transactions)],
+                        'merchant': np.random.choice(['Amazon', 'Walmart', 'Target', 'Starbucks', 'McDonalds', 'Shell', 'Exxon', 'Best Buy', 'Home Depot', 'CVS'], n_transactions),
+                        'location': np.random.choice(['New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX', 'Phoenix, AZ', 'International', 'Online'], n_transactions),
+                        'category': np.random.choice(['retail', 'restaurant', 'gas', 'grocery', 'entertainment', 'healthcare', 'transportation'], n_transactions),
+                        'is_fraud': np.random.choice([0, 1], n_transactions, p=[0.98, 0.02])
+                    }
+                    
+                    progress_bar.progress(0.5)
+                    
+                    df = pd.DataFrame(data)
+                    sample_file = data_dir / "sample_transactions.csv"
+                    df.to_csv(sample_file, index=False)
+                    
+                    progress_bar.progress(1.0)
+                    
+                    file_size_mb = sample_file.stat().st_size / (1024 * 1024)
+                    st.success(f"✅ Generated {len(df):,} transactions ({file_size_mb:.1f}MB)")
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Large sample generation failed: {str(e)}")
+        
+        return None
+        
+    if file_path.exists():
+        file_path.unlink()
+    return None
+
+def generate_cloud_sample_data():
+    """Generate sample data directly for cloud deployment."""
+    import numpy as np
+    
+    data_dir = Path("data")
+    data_dir.mkdir(exist_ok=True)
+    
+    st.info("🔄 Generating realistic sample data for demo...")
+    progress_bar = st.progress(0)
+    
+    # Generate 50,000 transactions for good demo experience
+    np.random.seed(42)
+    n_transactions = 50000
+    
+    # Create realistic transaction patterns
+    data = {
+        'transaction_id': [f'TXN{str(i).zfill(8)}' for i in range(1, n_transactions + 1)],
+        'timestamp': pd.date_range('2023-01-01', periods=n_transactions, freq='30min'),
+        'amount': np.random.lognormal(3, 1.5, n_transactions).round(2),
+        'user_id': [f'USER{np.random.randint(1000, 9999)}' for _ in range(n_transactions)],
+        'merchant': np.random.choice([
+            'Amazon', 'Walmart', 'Target', 'Starbucks', 'McDonalds', 
+            'Shell', 'Exxon', 'Best Buy', 'Home Depot', 'CVS',
+            'Costco', 'Apple Store', 'Netflix', 'Uber', 'Airbnb'
+        ], n_transactions),
+        'location': np.random.choice([
+            'New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX',
+            'Phoenix, AZ', 'Philadelphia, PA', 'San Antonio, TX', 'San Diego, CA',
+            'Dallas, TX', 'San Jose, CA', 'Austin, TX', 'Jacksonville, FL',
+            'International', 'Online'
+        ], n_transactions),
+        'category': np.random.choice([
+            'retail', 'restaurant', 'gas', 'grocery', 'entertainment',
+            'healthcare', 'transportation', 'financial', 'utilities', 'online'
+        ], n_transactions)
+    }
+    
+    progress_bar.progress(0.3)
+    
+    df = pd.DataFrame(data)
+    
+    # Add realistic fraud patterns (2% fraud rate)
+    fraud_indicators = np.random.random(n_transactions) < 0.02
+    
+    # Make fraud more realistic - higher amounts, night time, international
+    night_hours = df['timestamp'].dt.hour.isin([22, 23, 0, 1, 2, 3])
+    high_amounts = df['amount'] > df['amount'].quantile(0.95)
+    international = df['location'] == 'International'
+    
+    # Increase fraud probability for suspicious patterns
+    fraud_boost = (night_hours * 0.05) + (high_amounts * 0.03) + (international * 0.08)
+    fraud_indicators = (np.random.random(n_transactions) + fraud_boost) > 0.98
+    
+    df['is_fraud'] = fraud_indicators.astype(int)
+    
+    progress_bar.progress(0.6)
+    
+    # Add derived features for analysis
+    df['hour'] = df['timestamp'].dt.hour
+    df['day_of_week'] = df['timestamp'].dt.dayofweek
+    df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
+    df['is_night'] = df['hour'].isin([22, 23, 0, 1, 2, 3]).astype(int)
+    df['amount_log'] = np.log1p(df['amount'])
+    df['amount_zscore'] = (df['amount'] - df['amount'].mean()) / df['amount'].std()
+    
+    progress_bar.progress(0.8)
+    
+    # Save the sample data
+    sample_file = data_dir / "sample_transactions.csv"
+    df.to_csv(sample_file, index=False)
+    
+    progress_bar.progress(1.0)
+    
+    file_size_mb = sample_file.stat().st_size / (1024 * 1024)
+    st.success(f"✅ Generated {len(df):,} transactions ({file_size_mb:.1f}MB)")
+    st.info(f"📊 Fraud rate: {df['is_fraud'].mean()*100:.2f}%")
+    
+    return sample_file
 
 def get_google_drive_datasets():
     """

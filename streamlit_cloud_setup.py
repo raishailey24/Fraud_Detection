@@ -15,11 +15,12 @@ def ensure_sample_data():
     sample_file = data_dir / "sample_transactions.csv"
     
     if not sample_file.exists():
-        st.info("🔄 Generating sample data for demo...")
+        st.info("🔄 Generating realistic sample data for demo...")
+        st.info("📊 Creating 100,000 transaction records with fraud patterns...")
         
         # Generate sample transaction data
         np.random.seed(42)
-        n_transactions = 10000
+        n_transactions = 100000
         
         # Generate realistic transaction data
         data = {
