@@ -200,7 +200,9 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
                 break
         
         if available_location_col:
-            locations = sorted(df[available_location_col].unique())
+            # Convert all location values to strings and remove NaN/None values
+            location_values = df[available_location_col].dropna().astype(str).unique()
+            locations = sorted([loc for loc in location_values if loc != 'nan' and loc != 'None'])
             
             st.sidebar.markdown("📍 **Location Filter**")
             selected_locations = st.sidebar.multiselect(
@@ -216,9 +218,17 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
                 # If nothing selected, show all data
                 pass
         
-        # Category filter (active by default)
-        if 'category' in df.columns:
-            categories = sorted(df['category'].unique())
+        # Category filter (active by default) - check for merchant_category or category
+        category_col = None
+        for col in ['merchant_category', 'category', 'transaction_type']:
+            if col in df.columns:
+                category_col = col
+                break
+                
+        if category_col:
+            # Convert all category values to strings and remove NaN/None values
+            category_values = df[category_col].dropna().astype(str).unique()
+            categories = sorted([cat for cat in category_values if cat != 'nan' and cat != 'None'])
             
             st.sidebar.markdown("🏷️ **Transaction Categories**")
             selected_categories = st.sidebar.multiselect(
@@ -229,7 +239,7 @@ def apply_smart_filters(df: pd.DataFrame) -> pd.DataFrame:
             )
             
             if selected_categories:
-                filtered_df = filtered_df[filtered_df['category'].isin(selected_categories)]
+                filtered_df = filtered_df[filtered_df[category_col].isin(selected_categories)]
         
         # Fraud focus filter (active by default)
         st.sidebar.markdown("🚨 **Transaction Focus**")
