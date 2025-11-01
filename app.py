@@ -45,16 +45,42 @@ def generate_sample_data():
     
     # Generate sample data
     np.random.seed(42)
-    n_samples = 100000  # 100K sample records
+    n_samples = 150000  # 150K sample records for more data
+    
+    # Define realistic geographic locations
+    cities = ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 
+              'San Antonio', 'San Diego', 'Dallas', 'San Jose', 'Austin', 'Jacksonville',
+              'Fort Worth', 'Columbus', 'Charlotte', 'San Francisco', 'Indianapolis', 'Seattle']
+    
+    states = ['NY', 'CA', 'IL', 'TX', 'AZ', 'PA', 'TX', 'CA', 'TX', 'CA', 'TX', 'FL',
+              'TX', 'OH', 'NC', 'CA', 'IN', 'WA']
+    
+    countries = ['USA'] * len(cities)
+    
+    # Expanded merchant categories
+    merchant_categories = [
+        'grocery', 'gas_station', 'restaurant', 'retail', 'online_shopping', 'atm',
+        'pharmacy', 'department_store', 'electronics', 'clothing', 'hotel', 'airline',
+        'car_rental', 'entertainment', 'healthcare', 'education', 'utilities', 'insurance'
+    ]
     
     # Generate transaction data
     data = {
         'transaction_id': [f'TXN_{i:08d}' for i in range(n_samples)],
         'user_id': np.random.randint(1000, 50000, n_samples),
         'amount': np.random.lognormal(3, 1.5, n_samples).round(2),
-        'merchant_category': np.random.choice(['grocery', 'gas', 'restaurant', 'retail', 'online', 'atm'], n_samples),
+        'merchant_category': np.random.choice(merchant_categories, n_samples),
         'transaction_type': np.random.choice(['purchase', 'withdrawal', 'transfer', 'payment'], n_samples),
         'is_fraud': np.random.choice([0, 1], n_samples, p=[0.998, 0.002]),  # 0.2% fraud rate
+        
+        # Add geographic data
+        'city': np.random.choice(cities, n_samples),
+        'state': np.random.choice(states, n_samples),
+        'country': np.random.choice(countries, n_samples),
+        
+        # Add merchant and location details
+        'merchant_name': [f'Merchant_{np.random.randint(1, 10000):04d}' for _ in range(n_samples)],
+        'location': np.random.choice(cities, n_samples),
     }
     
     # Add timestamps
@@ -67,23 +93,25 @@ def generate_sample_data():
         # Fraudulent transactions tend to be higher amounts
         data['amount'][idx] = np.random.lognormal(5, 1, 1)[0].round(2)
         # More likely to be online or ATM
-        data['merchant_category'][idx] = np.random.choice(['online', 'atm'], 1)[0]
+        data['merchant_category'][idx] = np.random.choice(['online_shopping', 'atm', 'electronics'], 1)[0]
+        # Fraud more common in certain cities
+        data['city'][idx] = np.random.choice(['New York', 'Los Angeles', 'Chicago'], 1)[0]
     
     df = pd.DataFrame(data)
     return df
 
 def get_github_datasets():
     """Define sample data generation instead of external downloads."""
-    # Since external hosting isn't set up yet, we'll generate sample data
+    # Generate more chunks for better data variety
     chunks = {}
-    estimated_chunks = 3  # Reduced to 3 smaller chunks for demo
+    estimated_chunks = 10  # Increased to 10 chunks for more realistic dataset
     
     for i in range(estimated_chunks):
         chunk_filename = f"sample_transactions_chunk_{i:02d}.parquet"
         chunks[chunk_filename] = {
             "url": "sample_data",  # Special marker for sample data
             "description": f"Sample Transactions - Chunk {i+1}/{estimated_chunks}",
-            "size_mb": 5,  # Smaller sample chunks
+            "size_mb": 8,  # Larger chunks with more data
             "is_chunked": True,
             "chunk_index": i,
             "total_chunks": estimated_chunks,
@@ -110,7 +138,7 @@ def download_from_github(url: str, filename: str, description: str = "dataset") 
             
             # Split data into chunks based on filename
             chunk_index = int(filename.split('_')[-1].split('.')[0])
-            total_chunks = 3
+            total_chunks = 10
             chunk_size = len(df) // total_chunks
             
             start_idx = chunk_index * chunk_size
@@ -193,7 +221,7 @@ def merge_parquet_chunks(chunk_files: list) -> pd.DataFrame:
 def load_full_dataset():
     """Load the complete dataset."""
     st.sidebar.markdown("### 📊 Demo Dataset")
-    st.sidebar.info(f"300K transaction records • 6 columns • ~15MB total")
+    st.sidebar.info(f"1.5M transaction records • 12 columns • ~80MB total")
     
     data_dir = Path("data")
     github_datasets = get_github_datasets()
@@ -506,23 +534,23 @@ def main():
         👋 **Welcome to Your Fraud Analytics Dashboard!**
         
         **Demo Dataset Status:**
-        - 📊 **Source**: Sample financial transaction data (300K records)
+        - 📊 **Source**: Sample financial transaction data (1.5M records)
         - 🔍 **Fraud Detection**: Realistic fraud patterns and labels
         - 📈 **Analytics**: Advanced risk scoring and pattern analysis
         - 🤖 **AI Copilot**: Claude 3.5 Sonnet for intelligent insights
         
         **Dataset Information:**
-        - **Size**: ~15MB total (3 chunks × ~5MB each)
+        - **Size**: ~80MB total (10 chunks × ~8MB each)
         - **Format**: Optimized parquet files for fast loading
-        - **Type**: Generated sample data for demonstration
+        - **Type**: Generated sample data with geographic and merchant details
         
         **Get Started:**
         1. Click **"Download Complete Dataset"** in the sidebar
-        2. Wait for sample data generation (~15MB total)
+        2. Wait for sample data generation (~80MB total)
         3. Click **"Load Fraud Detection Dashboard"**
         4. Explore fraud patterns with AI-powered insights!
         
-        **Note**: This demo uses generated sample data. The full production version would connect to your actual transaction database.
+        **Note**: This demo uses generated sample data with realistic geographic and merchant information. The full production version would connect to your actual transaction database.
         """)
 
 if __name__ == "__main__":
