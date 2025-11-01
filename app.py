@@ -290,63 +290,9 @@ def load_full_dataset():
         except Exception as e:
             st.sidebar.error(f"Upload failed: {str(e)}")
     
-    # No data available - show sample data generation
-    st.warning("⚠️ No transaction data available")
-    st.info("Generate sample data to explore the fraud detection dashboard features.")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🎯 Generate Sample Data (50K records)", type="primary"):
-            try:
-                sample_file = generate_cloud_sample_data()
-                st.success("✅ Sample data generated successfully!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Sample data generation failed: {str(e)}")
-    
-    with col2:
-        if st.button("📊 Generate Large Sample (100K records)"):
-            try:
-                # Generate larger sample for better demo
-                import numpy as np
-                np.random.seed(42)
-                
-                data_dir = Path("data")
-                data_dir.mkdir(exist_ok=True)
-                
-                st.info("🔄 Generating large sample dataset...")
-                progress_bar = st.progress(0)
-                
-                n_transactions = 100000
-                
-                # Quick generation for large dataset
-                data = {
-                    'transaction_id': [f'TXN{str(i).zfill(8)}' for i in range(1, n_transactions + 1)],
-                    'timestamp': pd.date_range('2023-01-01', periods=n_transactions, freq='15min'),
-                    'amount': np.random.lognormal(3, 1.5, n_transactions).round(2),
-                    'user_id': [f'USER{np.random.randint(1000, 9999)}' for _ in range(n_transactions)],
-                    'merchant': np.random.choice(['Amazon', 'Walmart', 'Target', 'Starbucks', 'McDonalds', 'Shell', 'Exxon', 'Best Buy', 'Home Depot', 'CVS'], n_transactions),
-                    'location': np.random.choice(['New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX', 'Phoenix, AZ', 'International', 'Online'], n_transactions),
-                    'category': np.random.choice(['retail', 'restaurant', 'gas', 'grocery', 'entertainment', 'healthcare', 'transportation'], n_transactions),
-                    'is_fraud': np.random.choice([0, 1], n_transactions, p=[0.98, 0.02])
-                }
-                
-                progress_bar.progress(0.5)
-                
-                df = pd.DataFrame(data)
-                sample_file = data_dir / "sample_transactions.csv"
-                df.to_csv(sample_file, index=False)
-                
-                progress_bar.progress(1.0)
-                
-                file_size_mb = sample_file.stat().st_size / (1024 * 1024)
-                st.success(f"✅ Generated {len(df):,} transactions ({file_size_mb:.1f}MB)")
-                st.rerun()
-                
-            except Exception as e:
-                st.error(f"Large sample generation failed: {str(e)}")
-    
-    return None
+    if available_files:
+        # Default to largest dataset (complete dataset) for local use
+        default_index = 0
         for i, (filename, _) in enumerate(available_files):
             if "complete" in filename.lower():
                 default_index = i
@@ -383,8 +329,62 @@ def load_full_dataset():
             st.sidebar.error(f"❌ {str(e)}")
             return None
     else:
-        st.sidebar.error("❌ No dataset found!")
-        st.sidebar.info("Please upload your transaction data to the /data folder")
+        # No data available - show sample data generation
+        st.warning("⚠️ No transaction data available")
+        st.info("Generate sample data to explore the fraud detection dashboard features.")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🎯 Generate Sample Data (50K records)", type="primary"):
+                try:
+                    sample_file = generate_cloud_sample_data()
+                    st.success("✅ Sample data generated successfully!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Sample data generation failed: {str(e)}")
+        
+        with col2:
+            if st.button("📊 Generate Large Sample (100K records)"):
+                try:
+                    # Generate larger sample for better demo
+                    import numpy as np
+                    np.random.seed(42)
+                    
+                    data_dir = Path("data")
+                    data_dir.mkdir(exist_ok=True)
+                    
+                    st.info("🔄 Generating large sample dataset...")
+                    progress_bar = st.progress(0)
+                    
+                    n_transactions = 100000
+                    
+                    # Quick generation for large dataset
+                    data = {
+                        'transaction_id': [f'TXN{str(i).zfill(8)}' for i in range(1, n_transactions + 1)],
+                        'timestamp': pd.date_range('2023-01-01', periods=n_transactions, freq='15min'),
+                        'amount': np.random.lognormal(3, 1.5, n_transactions).round(2),
+                        'user_id': [f'USER{np.random.randint(1000, 9999)}' for _ in range(n_transactions)],
+                        'merchant': np.random.choice(['Amazon', 'Walmart', 'Target', 'Starbucks', 'McDonalds', 'Shell', 'Exxon', 'Best Buy', 'Home Depot', 'CVS'], n_transactions),
+                        'location': np.random.choice(['New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX', 'Phoenix, AZ', 'International', 'Online'], n_transactions),
+                        'category': np.random.choice(['retail', 'restaurant', 'gas', 'grocery', 'entertainment', 'healthcare', 'transportation'], n_transactions),
+                        'is_fraud': np.random.choice([0, 1], n_transactions, p=[0.98, 0.02])
+                    }
+                    
+                    progress_bar.progress(0.5)
+                    
+                    df = pd.DataFrame(data)
+                    sample_file = data_dir / "sample_transactions.csv"
+                    df.to_csv(sample_file, index=False)
+                    
+                    progress_bar.progress(1.0)
+                    
+                    file_size_mb = sample_file.stat().st_size / (1024 * 1024)
+                    st.success(f"✅ Generated {len(df):,} transactions ({file_size_mb:.1f}MB)")
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Large sample generation failed: {str(e)}")
+        
         return None
 
 
