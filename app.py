@@ -84,7 +84,167 @@ def load_dataset_file(file_path: str):
     except Exception as e:
         raise Exception(f"Error loading dataset: {str(e)}")
 
-# Google Drive functionality removed - using local files and uploads only
+def get_google_drive_datasets():
+    """
+    Define Google Drive file IDs for parquet datasets.
+    Update these IDs after uploading your parquet files to Google Drive.
+    """
+    return {
+        "complete_user_transactions.parquet": {
+            "file_id": "YOUR_PARQUET_FILE_ID_HERE",  # Replace with actual Google Drive file ID
+            "description": "Complete User Transactions (Parquet Format)",
+            "size_mb": "TBD",  # Will be updated after conversion
+            "is_chunked": False
+        },
+        # If file is chunked, add chunk entries like:
+        # "complete_user_transactions_chunk_00.parquet": {
+        #     "file_id": "CHUNK_0_FILE_ID",
+        #     "description": "Complete Transactions - Chunk 1",
+        #     "size_mb": 95,
+        #     "is_chunked": True,
+        #     "chunk_index": 0,
+        #     "total_chunks": 3
+        # },
+    }
+
+def download_from_google_drive(file_id: str, filename: str, description: str = "dataset") -> Path:
+    """
+    Download parquet dataset from Google Drive with proper large file handling.
+    """
+    data_dir = Path("data")
+    data_dir.mkdir(exist_ok=True)
+    file_path = data_dir / filename
+    
+    # Check if file already exists and is not empty
+    if file_path.exists() and file_path.stat().st_size > 1024:  # At least 1KB
+        file_size_mb = file_path.stat().st_size / (1024 * 1024)
+        st.success(f"✅ {description} already available ({file_size_mb:.1f}MB)")
+        return file_path
+    
+    try:
+        # Check if running on Streamlit Cloud
+        is_cloud = "streamlit" in str(Path.cwd()).lower() or "app" in str(Path.cwd()).lower()
+        
+        # Show preparation message
+        st.markdown("### 🚀 Downloading Parquet Dataset")
+        st.info(f"📥 Downloading {description} from Google Drive...")
+        if is_cloud:
+            st.info("⚡ **Parquet Format**: Faster downloads and smaller file sizes!")
+        
+        session = requests.Session()
+        
+        # Direct download URL for parquet files
+        download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        
+        st.info("🔄 Initiating download...")
+        response = session.get(download_url, stream=True, timeout=30)
+        
+        # Check for large file confirmation
+        if 'text/html' in response.headers.get('content-type', ''):
+            st.info("🔄 Large file detected, extracting confirmation token...")
+            
+            import re
+            confirm_token = None
+            
+            # Extract confirmation token
+            token_matches = re.findall(r'name="confirm"\s+value="([^"]+)"', response.text)
+            if token_matches:
+                confirm_token = token_matches[0]
+                st.info(f"🔑 Found confirmation token: {confirm_token[:10]}...")
+                
+                # Download with confirmation token
+                url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={file_id}"
+                response = session.get(url, stream=True, timeout=60)
+                response.raise_for_status()
+        
+        # Final check for HTML response
+        content_type = response.headers.get('content-type', '')
+        if 'text/html' in content_type:
+            st.error("❌ Received HTML instead of file. Please check Google Drive sharing permissions.")
+            st.info("""
+            **Fix sharing permissions:**
+            1. Go to your Google Drive file
+            2. Right-click → Share
+            3. Change to "Anyone with the link"
+            4. Set permission to "Viewer"
+            """)
+            return None
+        
+        total_size = int(response.headers.get('content-length', 0))
+        
+        # Create progress display
+        st.markdown("### 📥 Download Progress")
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        downloaded = 0
+        chunk_size = 8192
+        start_time = time.time()
+        
+        with open(file_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    
+                    if total_size > 0:
+                        progress = downloaded / total_size
+                        progress_bar.progress(min(progress, 1.0))
+                        
+                        downloaded_mb = downloaded / (1024 * 1024)
+                        total_mb = total_size / (1024 * 1024)
+                        
+                        elapsed = time.time() - start_time
+                        if elapsed > 1:
+                            speed_mbps = downloaded_mb / elapsed
+                            eta_seconds = (total_mb - downloaded_mb) / speed_mbps if speed_mbps > 0 else 0
+                            eta_minutes = eta_seconds / 60
+                            
+                            status_text.markdown(f"**📊 Progress:** {downloaded_mb:.1f}MB / {total_mb:.1f}MB ({progress*100:.1f}%) | **⚡ Speed:** {speed_mbps:.2f} MB/s | **⏱️ ETA:** {eta_minutes:.1f} min")
+        
+        # Verify download
+        final_size_mb = downloaded / (1024 * 1024)
+        if downloaded < 1024:
+            st.error(f"❌ Download failed: File too small ({downloaded} bytes)")
+            if file_path.exists():
+                file_path.unlink()
+            return None
+        
+        progress_bar.progress(1.0)
+        status_text.markdown(f"**✅ Download Complete!** {final_size_mb:.1f}MB")
+        
+        return file_path
+        
+    except Exception as e:
+        st.error(f"❌ Download failed: {str(e)}")
+        if file_path.exists():
+            file_path.unlink()
+        return None
+
+def merge_parquet_chunks(chunk_files: list) -> pd.DataFrame:
+    """
+    Merge multiple parquet chunks into a single DataFrame.
+    """
+    if not chunk_files:
+        return None
+    
+    st.info(f"🔗 Merging {len(chunk_files)} parquet chunks...")
+    progress_bar = st.progress(0)
+    
+    dfs = []
+    for i, chunk_file in enumerate(chunk_files):
+        if chunk_file.exists():
+            chunk_df = pd.read_parquet(chunk_file)
+            dfs.append(chunk_df)
+            progress_bar.progress((i + 1) / len(chunk_files))
+    
+    if dfs:
+        merged_df = pd.concat(dfs, ignore_index=True)
+        st.success(f"✅ Merged {len(chunk_files)} chunks: {len(merged_df):,} total records")
+        return merged_df
+    else:
+        st.error("❌ No valid chunk files found")
+        return None
 
 def generate_cloud_sample_data():
     """Generate sample data directly for cloud deployment."""
@@ -179,173 +339,140 @@ def load_full_dataset():
     # Get available datasets
     available_files, data_dir = get_available_datasets()
     
-    # Add file upload option
+    # Google Drive Parquet Datasets
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📤 Upload Your CSV")
+    st.sidebar.markdown("### Google Drive Datasets")
+    st.sidebar.info(" Parquet Format: Faster loading, smaller files, better compression")
     
-    # Multi-file upload for large datasets
-    with st.sidebar.expander("📁 Multi-File Upload (for 2GB+ datasets)"):
-        st.markdown("**Split your large CSV into 200MB chunks and upload them here:**")
+    google_datasets = get_google_drive_datasets()
+    
+    # Check for chunked datasets
+    chunked_datasets = {}
+    single_datasets = {}
+    
+    for filename, info in google_datasets.items():
+        if info.get('is_chunked', False):
+            base_name = filename.split('_chunk_')[0]
+            if base_name not in chunked_datasets:
+                chunked_datasets[base_name] = []
+            chunked_datasets[base_name].append((filename, info))
+        else:
+            single_datasets[filename] = info
+    
+    # Display single parquet files
+    for filename, info in single_datasets.items():
+        file_path = data_dir / filename
+        if file_path.exists():
+            size_mb = file_path.stat().st_size / (1024 * 1024)
+            st.sidebar.success(f" {info['description']} ({size_mb:.1f}MB)")
+        else:
+            if info['file_id'] != "YOUR_PARQUET_FILE_ID_HERE":
+                if st.sidebar.button(f" Download {info['description']}", key=f"gd_{filename}"):
+                    result = download_from_google_drive(info["file_id"], filename, info["description"])
+                    if result:
+                        st.success(" Download completed!")
+                        st.rerun()
+            else:
+                st.sidebar.warning(" Please update Google Drive file ID")
+    
+    # Display chunked datasets
+    for base_name, chunks in chunked_datasets.items():
+        with st.sidebar.expander(f"📦 {base_name} ({len(chunks)} chunks)"):
+            all_downloaded = True
+            chunk_files = []
+            
+            for filename, info in sorted(chunks, key=lambda x: x[1].get('chunk_index', 0)):
+                file_path = data_dir / filename
+                chunk_files.append(file_path)
+                
+                if file_path.exists():
+                    size_mb = file_path.stat().st_size / (1024 * 1024)
+                    st.success(f"✅ Chunk {info.get('chunk_index', 0)+1} ({size_mb:.1f}MB)")
+                else:
+                    all_downloaded = False
+                    if info['file_id'] != "CHUNK_FILE_ID":
+                        if st.button(f"📥 Download Chunk {info.get('chunk_index', 0)+1}", key=f"chunk_{filename}"):
+                            result = download_from_google_drive(info["file_id"], filename, info["description"])
+                            if result:
+                                st.rerun()
+                    else:
+                        st.warning(f"⚠️ Update file ID for chunk {info.get('chunk_index', 0)+1}")
+            
+            if all_downloaded and len([f for f in chunk_files if f.exists()]) == len(chunks):
+                if st.button(f"🔗 Load Merged Dataset", key=f"merge_{base_name}"):
+                    merged_df = merge_parquet_chunks(chunk_files)
+                    if merged_df is not None:
+                        return merged_df
+    
+    # Instructions for setting up Google Drive
+    with st.sidebar.expander("📋 Setup Instructions"):
+        st.markdown("""
+        **Step 1: Convert CSV to Parquet**
+        ```bash
+        python convert_to_parquet.py
+        ```
         
-        uploaded_files = st.file_uploader(
-            "Choose CSV chunks",
-            type=['csv'],
-            accept_multiple_files=True,
-            help="Upload multiple CSV files (each <200MB) - they will be merged automatically"
-        )
+        **Step 2: Upload to Google Drive**
+        - Upload all parquet files to Google Drive
+        - Set sharing: "Anyone with the link can view"
         
-        if uploaded_files and len(uploaded_files) > 1:
-            if st.button("🔗 Merge Uploaded Files", type="primary"):
-                try:
-                    st.info(f"📥 Merging {len(uploaded_files)} CSV files...")
-                    progress_bar = st.progress(0)
-                    
-                    # Save and merge files
-                    data_dir.mkdir(exist_ok=True)
-                    merged_dfs = []
-                    
-                    for i, uploaded_file in enumerate(uploaded_files):
-                        # Save each chunk
-                        chunk_path = data_dir / f"chunk_{i}.csv"
-                        with open(chunk_path, "wb") as f:
-                            f.write(uploaded_file.getbuffer())
-                        
-                        # Read and add to merge list
-                        chunk_df = pd.read_csv(chunk_path)
-                        merged_dfs.append(chunk_df)
-                        
-                        # Update progress
-                        progress_bar.progress((i + 1) / len(uploaded_files) * 0.8)
-                    
-                    # Merge all dataframes
-                    st.info("🔗 Combining all chunks...")
-                    merged_df = pd.concat(merged_dfs, ignore_index=True)
-                    
-                    # Save merged file
-                    merged_path = data_dir / "merged_transactions.csv"
-                    merged_df.to_csv(merged_path, index=False)
-                    
-                    progress_bar.progress(1.0)
-                    
-                    # Clean up chunk files
-                    for i in range(len(uploaded_files)):
-                        chunk_path = data_dir / f"chunk_{i}.csv"
-                        if chunk_path.exists():
-                            chunk_path.unlink()
-                    
-                    file_size_mb = merged_path.stat().st_size / (1024 * 1024)
-                    st.success(f"✅ Merged {len(uploaded_files)} files: {len(merged_df):,} records ({file_size_mb:.1f}MB)")
-                    
-                    # Auto-rename columns and return
-                    from utils.data_loader import DataLoader
-                    merged_df = DataLoader.auto_rename_columns(merged_df)
-                    
-                    return merged_df
-                    
-                except Exception as e:
-                    st.error(f"Merge failed: {str(e)}")
+        **Step 3: Update File IDs**
+        - Copy file IDs from Google Drive URLs
+        - Update the `get_google_drive_datasets()` function
         
-        elif uploaded_files and len(uploaded_files) == 1:
-            st.info("💡 Single file detected - use regular upload below")
+        **Benefits:**
+        - 🚀 Faster downloads (parquet compression)
+        - 📦 Smaller file sizes (60-80% reduction)
+        - ⚡ Faster loading in app
+        """)
     
-    # Check if running locally or in cloud
-    is_local = not ("streamlit" in str(Path.cwd()).lower() or "app" in str(Path.cwd()).lower())
+    st.sidebar.markdown("---")
     
-    if is_local:
-        uploaded_file = st.sidebar.file_uploader(
-            "Choose CSV file",
-            type=['csv'],
-            help="Upload your large CSV file (no size limit locally)"
-        )
-    else:
-        uploaded_file = st.sidebar.file_uploader(
-            "Choose CSV file",
-            type=['csv'],
-            help="Upload CSV file (max 200MB for Streamlit Cloud)"
-        )
-        st.sidebar.warning("⚠️ Cloud deployment has 200MB upload limit. Use sample data or external hosting for larger files.")
-    
-    if uploaded_file is not None:
-        try:
-            # Save uploaded file
-            data_dir.mkdir(exist_ok=True)
-            file_path = data_dir / "uploaded_transactions.csv"
-            
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            file_size_mb = file_path.stat().st_size / (1024 * 1024)
-            st.sidebar.success(f"✅ File uploaded: {file_size_mb:.1f}MB")
-            
-            # Load and process the uploaded file
-            df = pd.read_csv(file_path)
-            
-            # Auto-rename columns if needed
-            from utils.data_loader import DataLoader
-            df = DataLoader.auto_rename_columns(df)
-            
-            st.sidebar.info(f"📊 Records: {len(df):,}")
-            return df
-            
-        except Exception as e:
-            st.sidebar.error(f"Upload failed: {str(e)}")
-    
+    # Check for existing local files as fallback
     if available_files:
-        # Default to largest dataset (complete dataset) for local use
-        default_index = 0
-        for i, (filename, _) in enumerate(available_files):
-            if "complete" in filename.lower():
-                default_index = i
-                break
-        
-        # Let user choose dataset for deployment flexibility
+        # Load local parquet or CSV files
         selected_file = st.sidebar.selectbox(
-            "📊 Select Dataset",
+            "📊 Local Files",
             options=[f[0] for f in available_files],
             format_func=lambda x: next(f[1] for f in available_files if f[0] == x),
-            index=default_index,
-            help="Choose dataset size - defaults to complete dataset for local use"
+            help="Local files found in data directory"
         )
-        user_data_path = data_dir / selected_file
         
-        # Load the selected dataset using cached function
+        file_path = data_dir / selected_file
         try:
-            df = load_dataset_file(str(user_data_path))
+            if selected_file.endswith('.parquet'):
+                df = pd.read_parquet(file_path)
+            else:
+                df = load_dataset_file(str(file_path))
             
             # Auto-rename columns if needed
             from utils.data_loader import DataLoader
             df = DataLoader.auto_rename_columns(df)
             
-            # Show dataset info
-            file_size_mb = user_data_path.stat().st_size / (1024*1024)
-            st.sidebar.success(f"✅ Dataset loaded: {len(df):,} records ({file_size_mb:.1f}MB)")
-            
-            # Show local performance info for large datasets
-            if file_size_mb > 1000:  # If > 1GB
-                st.sidebar.info("🖥️ **Local Performance Mode**\n- Full dataset loaded in memory\n- All visualizations use complete data\n- Filters apply to entire dataset\n- Cached for 2 hours")
-            
+            file_size_mb = file_path.stat().st_size / (1024*1024)
+            st.sidebar.success(f"✅ Loaded: {len(df):,} records ({file_size_mb:.1f}MB)")
             return df
+            
         except Exception as e:
-            st.sidebar.error(f"❌ {str(e)}")
-            return None
-    else:
-        # No data available - show sample data generation
-        st.warning("⚠️ No transaction data available")
-        st.info("Generate sample data to explore the fraud detection dashboard features.")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🎯 Generate Sample Data (50K records)", type="primary"):
-                try:
-                    sample_file = generate_cloud_sample_data()
-                    st.success("✅ Sample data generated successfully!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Sample data generation failed: {str(e)}")
-        
-        with col2:
-            if st.button("📊 Generate Large Sample (100K records)"):
-                try:
+            st.sidebar.error(f"❌ Error loading {selected_file}: {str(e)}")
+    
+    # No data available - show sample data generation
+    st.warning("⚠️ No transaction data available")
+    st.info("Convert your CSV to parquet format and upload to Google Drive, or generate sample data.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🎯 Generate Sample Data (50K records)", type="primary"):
+            try:
+                sample_file = generate_cloud_sample_data()
+                st.success("✅ Sample data generated successfully!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Sample data generation failed: {str(e)}")
+    
+    with col2:
+        if st.button("📊 Generate Large Sample (100K records)"):
+            try:
                     # Generate larger sample for better demo
                     import numpy as np
                     np.random.seed(42)
@@ -382,10 +509,10 @@ def load_full_dataset():
                     st.success(f"✅ Generated {len(df):,} transactions ({file_size_mb:.1f}MB)")
                     st.rerun()
                     
-                except Exception as e:
-                    st.error(f"Large sample generation failed: {str(e)}")
-        
-        return None
+            except Exception as e:
+                st.error(f"Large sample generation failed: {str(e)}")
+    
+    return None
 
 
 def load_data_section():
